@@ -83,7 +83,10 @@ class ScannerTestCaseParser {
             // Reset scanner position to start of the line
             source.tokenReset();
             if (TestCaseDiagnosticParser.isDiagnosticStart(source)) {
-                expectedDiagnostics.add(consumeDiagnostic(lineNumber, (_, number) -> lineOffsets.get(number - 1)));
+                expectedDiagnostics.add(consumeDiagnostic(lineNumber, (_, number) ->
+                        (number > lineOffsets.size())
+                                ? source.length()
+                                : lineOffsets.get(number - 1)));
             } else {
                 expectedTokens.add(consumeToken(lineNumber, lineOffset));
             }

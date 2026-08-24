@@ -167,7 +167,9 @@ public class TestCaseDiagnosticParser {
         var lineNumber = consumeInteger();
         skipWhitespace();
         requireCharacter('|', () -> "Expecting '|' after source line number");
-        requireCharacter(' ', () -> "Expecting at least one space indent after line number gutter separator");
+        if (!isAtEndOfLine()) {
+            requireCharacter(' ', () -> "Expecting at least one space indent after line number gutter separator");
+        }
         while (!isAtEndOfLine()) source.advance();
         requireNewline();
 
@@ -337,7 +339,7 @@ public class TestCaseDiagnosticParser {
                 }
                 i++;
             }
-            exception.setStackTrace(Arrays.copyOf(stackTrace, i));
+            exception.setStackTrace(Arrays.copyOfRange(stackTrace, i, stackTrace.length));
             return exception;
         }
 

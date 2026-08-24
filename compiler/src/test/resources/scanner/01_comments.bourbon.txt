@@ -1,0 +1,26 @@
+============================
+Unbalanced Multiline Comment
+============================
+// Line comment gets skipped
+/*
+ * Block comments get skipped as well
+ */
+
+/*
+ * Block comments can be nested
+ /* They too will be skipped */
+ */
+
+/* Unbalanced comment will be reported as an error
+ /* Nested comment */
+ /* Another nested comment. We should suggest closing it.
+*/
+---
+✗ error[BCE000101]: Unbalanced Multiline comment
+  --> 01_comments.bourbon.txt:11:1
+     |
+  11 | /*
+     | ^^ Multi-line comment starts here
+  15 |
+     | ^ Still no end of comment
+     |
