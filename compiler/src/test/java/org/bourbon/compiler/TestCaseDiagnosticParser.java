@@ -12,7 +12,7 @@ import org.bourbon.compiler.Diagnostic.Code;
 import org.bourbon.compiler.Diagnostic.Severity;
 import org.bourbon.compiler.DiagnosticFormatter.Symbol.NerdFont;
 import org.bourbon.compiler.DiagnosticFormatter.Symbol.Unicode;
-import org.bourbon.compiler.ScannerTestCaseParser.LineOffsets;
+import org.bourbon.compiler.ScannerTestCaseParser.SourceLineIndex;
 import org.bourbon.compiler.SourceSpan.SourceName;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -22,18 +22,18 @@ public class TestCaseDiagnosticParser {
 
     private final Source source;
     private final int lineNumber;
-    private final LineOffsets lineOffsets;
+    private final SourceLineIndex sourceLineIndex;
 
     private final DiagnosticReportWrapper Report = new DiagnosticReportWrapper();
 
-    public TestCaseDiagnosticParser(Source source, int lineNumber, LineOffsets lineOffsets) {
+    public TestCaseDiagnosticParser(Source source, int lineNumber, SourceLineIndex sourceLineIndex) {
         this.source = source;
         this.lineNumber = lineNumber;
-        this.lineOffsets = lineOffsets;
+        this.sourceLineIndex = sourceLineIndex;
     }
 
-    public static Diagnostic parse(Source source, int lineNumber, LineOffsets lineOffsets) {
-        return new TestCaseDiagnosticParser(source, lineNumber, lineOffsets).parseDiagnostic();
+    public static Diagnostic parse(Source source, int lineNumber, SourceLineIndex sourceLineIndex) {
+        return new TestCaseDiagnosticParser(source, lineNumber, sourceLineIndex).parseDiagnostic();
     }
 
     public static boolean isDiagnosticStart(Source source) {
@@ -76,7 +76,7 @@ public class TestCaseDiagnosticParser {
             while (!source.isAtEnd()) {
                 switch (consumeSourceLabel()) {
                     case LabelResult.Some(int labelLine, int labelColumn, int spanLength, String labelMessage) -> {
-                        var startOffset = lineOffsets.get(sourceFileName, labelLine) + labelColumn - 1;
+                        var startOffset = sourceLineIndex.lineOffsetAt(sourceFileName, labelLine) + labelColumn - 1;
                         var sourceSpan = new SourceSpan(SourceName.of(sourceFileName), labelLine, labelColumn, startOffset, spanLength);
                         var isPrimary = labelLine == primaryLine && labelColumn == primaryColumn;
                         labels.add(new Label(sourceSpan, labelMessage, isPrimary));
@@ -101,16 +101,21 @@ public class TestCaseDiagnosticParser {
     }
 
     private int consumePrimaryLineNumber(int primaryLine) {
-        int lineNumber = consumeInteger();
-        if (primaryLine != lineNumber) {
-            Report.primaryLineNumberMismatch(primaryLine, lineNumber);
+        advanceInteger();
+        try {
+            var lineNumber = Integer.parseInt(source.lexeme());
+            if (primaryLine != lineNumber) {
+                Report.primaryLineNumberMismatch(primaryLine, lineNumber);
+            }
+            source.tokenStart();
+            return lineNumber;
+        } catch (NumberFormatException e) {
+            throw Report.expecInteger();
         }
-        return lineNumber;
     }
 
     private int consumeInteger() {
-        while (!isAtEndOfLine() && Character.isDigit(source.peek()))
-            source.advance();
+        advanceInteger();
         try {
             int integer = Integer.parseInt(source.lexeme());
             source.tokenStart();
@@ -118,6 +123,11 @@ public class TestCaseDiagnosticParser {
         } catch (NumberFormatException e) {
             throw Report.expecInteger();
         }
+    }
+
+    private void advanceInteger() {
+        while (!isAtEndOfLine() && Character.isDigit(source.peek()))
+            source.advance();
     }
 
     private String consumeSourceFileName() {

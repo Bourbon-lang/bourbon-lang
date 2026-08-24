@@ -1,0 +1,324 @@
+================
+Numeric Literals
+================
+// 1. Valid Binary Literals
+$0 $1 $01 $10010 $1010_0101 $1111_0000_1010_0101
+
+// 2. Binary Error Cases
+$ $123 $_01 $10_ $10__01
+
+// 3. Valid Hexadecimal Literals
+#0 #01 #2345 #6789 #abcdef #ABCDEF #ff_ff_ff_ff #1234_5678_9abc_def0
+
+// 4. Hexadecimal Error Cases
+# #12g #_ff #ff_ #ff__ff
+
+// 5. Valid Decimal Integers & Separators
+0 1234 1_000 1_234_567_890
+
+// 6. Decimal Integer & Separator Error Cases
+123_ 1__000 1_.2 12a3
+
+// 7. Valid Decimal Magnitudes (Integer & Fractional)
+1k 2M 3G 4T 5P 1m 2u 3n 4p 5f 1.5k 10.25u
+
+// 8. Decimal Magnitude Error Cases
+1km
+
+// 9. Valid Floats & Scientific Notation
+0.0 1.5 123.456 1_000.000_1 1e+5 1e-5 1.23E+10 123.45e-3
+
+// 10. Float & Exponent Error Cases
+1.2.3 1e5 1e+ 1e+2e+3 1e+a
+---
+---
+NUMBER $0                         0.0 @ 1
+NUMBER $1                         1.0 @ 4
+NUMBER $01                        1.0 @ 7
+NUMBER $10010                    18.0 @ 11
+NUMBER $1010_0101               165.0 @ 18
+NUMBER $1111_0000_1010_0101   61605.0 @ 29
+---
+---
+---
+ERROR  $       @  1
+✗ error[BCE000110]: Failed to parse binary literal value
+  --> 03_numeric_literals.bourbon.txt:5:2
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    | ^ Missing binary digits after '$' prefix
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |  ^ One or more binary digits (0 or 1) expected!
+    |
+
+ERROR  $123    @  3
+✗ error[BCE000110]: Failed to parse binary literal value
+  --> 03_numeric_literals.bourbon.txt:5:5
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |   ^^^^ Invalid binary literal!
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |     ^ '2' is not a valid binary digit (0 or 1)!
+    |
+
+ERROR  $_01    @  8
+✗ error[BCE000110]: Underscore is not allowed at the start of a binary literal
+  --> 03_numeric_literals.bourbon.txt:5:9
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |        ^^^^ Invalid binary literal!
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |         ^ Invalid leading underscore
+    |
+
+ERROR  $10_    @ 13
+✗ error[BCE000110]: Underscore is not allowed at the end of a binary literal
+  --> 03_numeric_literals.bourbon.txt:5:16
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |             ^^^^ Invalid binary literal!
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |                ^ Invalid trailing underscore
+    |
+
+ERROR  $10__01 @ 18
+✗ error[BCE000110]: Double underscore is not allowed in a binary literal
+  --> 03_numeric_literals.bourbon.txt:5:22
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |                  ^^^^^^^ Invalid binary literal!
+    |
+  5 | $ $123 $_01 $10_ $10__01
+    |                      ^ Invalid double underscore
+    |
+---
+---
+---
+NUMBER #0                                        0.0 @  1
+NUMBER #01                                       1.0 @  4
+NUMBER #2345                                  9029.0 @  8
+NUMBER #6789                                 26505.0 @ 14
+NUMBER #abcdef                            11259375.0 @ 20
+NUMBER #ABCDEF                            11259375.0 @ 28
+NUMBER #ff_ff_ff_ff                     4294967295.0 @ 36
+NUMBER #1234_5678_9abc_def0    1311768467463790320.0 @ 49
+---
+---
+---
+ERROR  #       @  1
+✗ error[BCE000110]: Failed to parse hexadecimal literal value
+  --> 03_numeric_literals.bourbon.txt:11:2
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    | ^ Missing hexadecimal digits after '#' prefix
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |  ^ One or more hexadecimal digits (0-9, a-f, A-F) expected!
+    |
+
+ERROR  #12g    @  3
+✗ error[BCE000110]: Failed to parse hexadecimal literal value
+  --> 03_numeric_literals.bourbon.txt:11:6
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |   ^^^^ Invalid hexadecimal literal!
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |      ^ 'g' is not a valid hexadecimal digit (0-9, a-f, A-F)!
+    |
+
+ERROR  #_ff    @  8
+✗ error[BCE000110]: Underscore is not allowed at the start of a hexadecimal literal
+  --> 03_numeric_literals.bourbon.txt:11:9
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |        ^^^^ Invalid hexadecimal literal!
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |         ^ Invalid leading underscore
+    |
+
+ERROR  #ff_    @ 13
+✗ error[BCE000110]: Underscore is not allowed at the end of a hexadecimal literal
+  --> 03_numeric_literals.bourbon.txt:11:16
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |             ^^^^ Invalid hexadecimal literal!
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |                ^ Invalid trailing underscore
+    |
+
+ERROR  #ff__ff @ 18
+✗ error[BCE000110]: Double underscore is not allowed in a hexadecimal literal
+  --> 03_numeric_literals.bourbon.txt:11:22
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |                  ^^^^^^^ Invalid hexadecimal literal!
+    |
+ 11 | # #12g #_ff #ff_ #ff__ff
+    |                      ^ Invalid double underscore
+    |
+---
+---
+---
+NUMBER 0                     0.0 @  1
+NUMBER 1234               1234.0 @  3
+NUMBER 1_000              1000.0 @  8
+NUMBER 1_234_567_890 1234567890.0 @ 14
+---
+---
+---
+ERROR  123_    @  1
+✗ error[BCE000110]: Underscore is not allowed at the end of a decimal literal
+  --> 03_numeric_literals.bourbon.txt:17:4
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    | ^^^^ Invalid decimal literal!
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    |    ^ Invalid trailing underscore
+    |
+ERROR  1__000  @  6
+✗ error[BCE000110]: Double underscore is not allowed in a decimal literal
+  --> 03_numeric_literals.bourbon.txt:17:8
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    |      ^^^^^^ Invalid decimal literal!
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    |        ^ Invalid double underscore
+    |
+ERROR  1_.2    @ 13
+✗ error[BCE000110]: Underscore is not allowed immediately before decimal point '.'
+  --> 03_numeric_literals.bourbon.txt:17:14
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    |             ^^^^ Invalid decimal literal!
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    |              ^ Invalid underscore before decimal point
+    |
+
+ERROR  12a3    @ 18
+✗ error[BCE000110]: Failed to parse decimal literal value
+  --> 03_numeric_literals.bourbon.txt:17:20
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    |                  ^^^^ Invalid decimal literal!
+    |
+ 17 | 123_ 1__000 1_.2 12a3
+    |                    ^ 'a' is not a valid decimal digit (0-9)!
+    |
+---
+---
+---
+NUMBER 1k                             1000.0 @  1
+NUMBER 2M                          2000000.0 @  4
+NUMBER 3G                       3000000000.0 @  7
+NUMBER 4T                    4000000000000.0 @ 10
+NUMBER 5P                 5000000000000000.0 @ 13
+NUMBER 1m                              0.001 @ 16
+NUMBER 2u                           0.000002 @ 19
+NUMBER 3n                        0.000000003 @ 22
+NUMBER 4p                     0.000000000004 @ 25
+NUMBER 5f                  0.000000000000005 @ 28
+NUMBER 1.5k                           1500.0 @ 31
+NUMBER 10.25u                     0.00001025 @ 36
+---
+---
+---
+ERROR  1km     @  1
+✗ error[BCE000110]: Failed to parse decimal literal value
+  --> 03_numeric_literals.bourbon.txt:23:2
+    |
+ 23 | 1km
+    | ^^^ Invalid decimal literal!
+    |
+ 23 | 1km
+    |  ^ 'k' is not a valid decimal digit (0-9)!
+    |
+---
+---
+---
+NUMBER 0.0                     0.0 @  1
+NUMBER 1.5                     1.5 @  5
+NUMBER 123.456             123.456 @  9
+NUMBER 1_000.000_1       1000.0001 @ 17
+NUMBER 1e+5               100000.0 @ 29
+NUMBER 1e-5                0.00001 @ 34
+NUMBER 1.23E+10      12300000000.0 @ 39
+NUMBER 123.45e-3           0.12345 @ 48
+---
+---
+---
+ERROR  1.2.3   @  1
+✗ error[BCE000110]: Multiple decimal points in numeric literal
+  --> 03_numeric_literals.bourbon.txt:29:4
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    | ^^^^^ Invalid decimal literal!
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |    ^ Second decimal point '.' is not allowed
+    |
+
+ERROR  1e5     @  7
+✗ error[BCE000110]: Missing sign in decimal exponent
+  --> 03_numeric_literals.bourbon.txt:29:9
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |       ^^^ Invalid decimal literal!
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |        ^^ Malformed exponent
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |         ^ Missing exponent sign
+    |
+
+ERROR  1e+     @ 11
+✗ error[BCE000110]: Missing digits in decimal exponent
+  --> 03_numeric_literals.bourbon.txt:29:14
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |           ^^^ Invalid decimal literal!
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |            ^^ Malformed exponent
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |              ^ Missing digits in decimal exponent
+    |
+
+ERROR  1e+2e+3 @ 15
+✗ error[BCE000110]: Multiple exponents in decimal literal
+  --> 03_numeric_literals.bourbon.txt:29:19
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |               ^^^^^^^ Invalid decimal literal!
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |                ^^^^^^ Malformed exponent
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |                   ^ Second exponent 'e' is not allowed
+    |
+
+ERROR  1e+a    @ 23
+✗ error[BCE000110]: Invalid exponent digits in decimal exponent
+  --> 03_numeric_literals.bourbon.txt:29:26
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |                       ^^^^ Invalid decimal literal!
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |                        ^^^ Malformed exponent
+    |
+ 29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
+    |                          ^ Invalid exponent digits
+    |

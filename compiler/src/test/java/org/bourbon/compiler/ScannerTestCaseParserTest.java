@@ -11,6 +11,9 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.Objects;
+
+import org.bourbon.compiler.literal.NumberLiteral;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,7 +61,7 @@ public class ScannerTestCaseParserTest {
     class TokenParserTest {
 
         @DisplayName("Simple Token Parsing")
-        @ParameterizedTest(name = "[Line {0}] should be parsed as {1} @ {4}:{5}")
+        @ParameterizedTest(name = "[Line {0}] should be parsed as {1} @ {4}:{5}", quoteTextArguments = false)
         @CsvSource({
                 "9, LEFT_BRACE, '{', null, 2, 1, 32, 1",
                 "10, RIGHT_BRACE, '}', null, 2, 2, 33, 1",
@@ -70,11 +73,12 @@ public class ScannerTestCaseParserTest {
             var source = Source.of(VALID_TEST_CASE).resetToLine(testCaseLine);
 
             var token = TestCaseTokenParser.parse(source, expectedLine, 32);
+            Objects.requireNonNull(token);
 
             var expectedType = TokenType.valueOf(expectedTypeName);
             var expectedLiteral = switch (expectedType) {
                 case STRING -> expectedLiteralString;
-                case NUMBER -> Double.parseDouble(expectedLiteralString);
+                case NUMBER -> NumberLiteral.parse(expectedLiteralString);
                 default -> null;
             };
 

@@ -16,6 +16,7 @@ import static org.bourbon.compiler.TokenType.DOT_DOT;
 import static org.bourbon.compiler.TokenType.EOF;
 import static org.bourbon.compiler.TokenType.EQUAL;
 import static org.bourbon.compiler.TokenType.EQUAL_EQUAL;
+import static org.bourbon.compiler.TokenType.ERROR;
 import static org.bourbon.compiler.TokenType.FAT_ARROW;
 import static org.bourbon.compiler.TokenType.GREATER;
 import static org.bourbon.compiler.TokenType.GREATER_EQUAL;
@@ -28,6 +29,7 @@ import static org.bourbon.compiler.TokenType.LESS_EQUAL_GREATER;
 import static org.bourbon.compiler.TokenType.MINUS;
 import static org.bourbon.compiler.TokenType.MINUS_EQUAL;
 import static org.bourbon.compiler.TokenType.MINUS_MINUS;
+import static org.bourbon.compiler.TokenType.NUMBER;
 import static org.bourbon.compiler.TokenType.PERCENT;
 import static org.bourbon.compiler.TokenType.PERCENT_EQUAL;
 import static org.bourbon.compiler.TokenType.PIPE;
@@ -58,6 +60,22 @@ import static org.bourbon.compiler.TokenType.TRIPLE_DOT;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.bourbon.compiler.Diagnostic.ScannerDiagnostic;
+import org.bourbon.compiler.Diagnostic.InternalError;
+import org.bourbon.compiler.literal.NumberLiteral;
+import org.bourbon.compiler.literal.NumberLiteralFormatError;
+import org.bourbon.compiler.Source.CharPredicate;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.InvalidDigit;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.InvalidExponentDigits;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MisplacedUnderscore;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MissingDecimalDigits;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MissingDigitsAfterDecimalPoint;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MissingDigitsAfterPrefix;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MissingExponentDigits;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MissingExponentSign;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MultipleDecimalPoints;
+import org.bourbon.compiler.literal.NumberLiteralFormatError.Detail.MultipleExponents;
+
 /**
  * The Scanner class is responsible for tokenizing the source code.
  * It reads the input stream and breaks it down into tokens.
@@ -78,7 +96,7 @@ public class Scanner {
 
     public List<Token> scanTokens() {
         if (!tokens.isEmpty() && !isAtEnd()) {
-            // Calling scanner scanTokens() repeatedly on same Source input
+            // Calling scanner scanTokens() repeatedly on the same Source input
             // (Like in REPL session multi-line input evaluation), the
             // Source content may have grown compared to the previous call.
             // If so, remove the trailing EOF from the token list and resume
@@ -105,7 +123,8 @@ public class Scanner {
     private void scanToken() {
         char c = advance();
         switch (c) {
-            // <editor-fold desc="2.2 Comments">
+            //<editor-fold desc="2.2 Comments">
+
             case '/' -> {
                 if (match('/')) {
                     while (peek() != '\n' && !isAtEnd())
@@ -121,15 +140,10 @@ public class Scanner {
                 }
             }
 
-            case '#' -> {
-                if (match('!')) {
-                    while (peek() != '\n' && !isAtEnd())
-                        advance();
-                    // ignore comment tokens for now
-                }
-            }
+            case '#' -> hexadecimalNumber();
+            case '$' -> binaryNumber();
 
-            // </editor-fold>
+            //</editor-fold>
 
             // <editor-fold desc="2.5 Operators and delimiters (from Ceylon spec)">
 
@@ -147,7 +161,7 @@ public class Scanner {
             case '^' -> addToken(CARET);
             // </editor-fold>
 
-            // <editor-fold desc="Multi-char tokens">
+            // <editor-fold desc="Multi-char operators">
 
             // <editor-fold desc="Operators: ? ?. % %= ~ ~= ">
             case '?' -> addDoubleToken(QUESTION, '.', QUESTION_DOT);
@@ -289,9 +303,195 @@ public class Scanner {
             // </editor-fold>
 
             // Rest
-            default ->
-                DiagnosticReporter.report(Diagnostic.Scanner.unexpectedCharacter(source.currentSpan()));
+            default -> {
+                if (isDigit(c)) {
+                    decimalNumber();
+                } else {
+                    DiagnosticReporter.report(ScannerDiagnostic.unexpectedCharacter(source.currentSpan()));
+                }
+            }
         }
+    }
+
+    private void hexadecimalNumber() {
+        consumeAlphanumericCharacters();
+        parseNumberToken(source.lexeme());
+    }
+
+    private void binaryNumber() {
+        consumeAlphanumericCharacters();
+        parseNumberToken(source.lexeme());
+    }
+
+    private void decimalNumber() {
+        greedyDecimalNumberScan();
+        parseNumberToken(source.lexeme());
+    }
+
+    private void consumeAlphanumericCharacters() {
+        while (!isAtEnd() && (isAlphaNumeric(peek()) || peek('_'))) advance();
+    }
+
+    private void consumeNumericCharacters() {
+        while (!isAtEnd() && (isDigit(peek()) || peek('_'))) advance();
+    }
+
+    private void greedyDecimalNumberScan() {
+        consumeNumericCharacters();
+
+        while (!isAtEnd()) {
+            // Case A: Decimal point followed by digit (e.g. .5 in 1.5, or .3 in 1.2.3)
+            if (peek('.') && isDigit(peekNext())) {
+                advance(); // consume '.'
+                consumeNumericCharacters();
+            }
+
+            // Case B: Exponent with mandatory sign (e.g. e+5 in 1.2e+5, or e+3 in 1e+2e+3)
+            else if ((peek('e') || peek('E')) && (peekNext() == '+' || peekNext() == '-')) {
+                advance(); // consume 'e' or 'E'
+                advance(); // consume '+' or '-'
+                consumeNumericCharacters();
+            }
+
+            // Case C: Magnitude suffixes, attached letters, or misplaced digits (e.g. k in 1k, or ms in 100ms)
+            else if (isAlphaNumeric(peek()) || peek('_')) {
+                advance();
+            }
+
+            // Case D: Hit an operator (+, -, *, /), punctuation (,, ;), or whitespace -> STOP!
+            else {
+                break;
+            }
+        }
+    }
+
+    private void parseNumberToken(String string) {
+        if (!string.isEmpty()) {
+            try {
+                var value = NumberLiteral.parse(string);
+                if (value != null) {
+                    addToken(NUMBER, value);
+                    return;
+                }
+            } catch (NumberLiteralFormatError nlfe) {
+                switch (nlfe.getDetail()) {
+                    case MissingDigitsAfterPrefix detail -> {
+                        var base = detail.base();
+                        var prefix = source.currentSpan();
+                        var primary = source.spanAt(prefix.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Failed to parse " + base.toLowerCase() + " literal value",
+                                Label.of(prefix, "Missing " + base.toLowerCase() + " digits after '" + detail.prefix() + "' prefix"),
+                                Label.primaryOf(primary, "One or more " + base.toLowerCase() + " digits (" + base.validDigits() + ") expected!")));
+                    }
+                    case MissingDecimalDigits detail -> {
+                        var literal = source.currentSpan();
+                        var invalid = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Failed to parse decimal literal value",
+                                Label.of(literal, "Invalid decimal literal!"),
+                                Label.primaryOf(invalid, "Missing decimal digits!")));
+                    }
+                    case InvalidDigit detail -> {
+                        var base = detail.base();
+                        var literal = source.currentSpan();
+                        var digit = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Failed to parse " + base.toLowerCase() + " literal value",
+                                Label.of(literal, "Invalid " + base.toLowerCase() + " literal!"),
+                                Label.primaryOf(digit, "'" + detail.character() + "' is not a valid " + base.toLowerCase() + " digit (" + base.validDigits() + ")!")));
+                    }
+                    case MultipleDecimalPoints detail -> {
+                        var literal = source.currentSpan();
+                        var digit = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Multiple decimal points in numeric literal",
+                                Label.of(literal, "Invalid decimal literal!"),
+                                Label.primaryOf(digit, "Second decimal point '.' is not allowed")));
+                    }
+                    case MissingDigitsAfterDecimalPoint detail -> {
+                        var literal = source.currentSpan();
+                        var digit = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Missing digits after decimal point",
+                                Label.of(literal, "Invalid decimal literal!"),
+                                Label.primaryOf(digit, "Expected digits after decimal point")));
+                    }
+                    case MissingExponentSign detail -> {
+                        var literal = source.currentSpan();
+                        var exponent = source.spanAt(literal.startOffset() + detail.exponentOffset(), detail.exponentLength());
+                        var missing = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Missing sign in decimal exponent",
+                                Label.of(literal, "Invalid decimal literal!"),
+                                Label.of(exponent, "Malformed exponent"),
+                                Label.primaryOf(missing, "Missing exponent sign")));
+                    }
+                    case MissingExponentDigits detail -> {
+                        var literal = source.currentSpan();
+                        var exponent = source.spanAt(literal.startOffset() + detail.exponentOffset(), detail.exponentLength());
+                        var missing = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Missing digits in decimal exponent",
+                                Label.of(literal, "Invalid decimal literal!"),
+                                Label.of(exponent, "Malformed exponent"),
+                                Label.primaryOf(missing, "Missing digits in decimal exponent")));
+                    }
+                    case MultipleExponents detail -> {
+                        var literal = source.currentSpan();
+                        var exponent = source.spanAt(literal.startOffset() + detail.exponentOffset(), detail.exponentLength());
+                        var secondExponentStart = source.spanAt(literal.startOffset() + detail.offset(), 1);
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Multiple exponents in decimal literal",
+                                Label.of(literal, "Invalid decimal literal!"),
+                                Label.of(exponent, "Malformed exponent"),
+                                Label.primaryOf(secondExponentStart, "Second exponent 'e' is not allowed")));
+                    }
+                    case InvalidExponentDigits detail -> {
+                        var literal = source.currentSpan();
+                        var exponent = source.spanAt(literal.startOffset() + detail.exponentOffset(), detail.exponentLength());
+                        var invalid = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                "Invalid exponent digits in decimal exponent",
+                                Label.of(literal, "Invalid decimal literal!"),
+                                Label.of(exponent, "Malformed exponent"),
+                                Label.primaryOf(invalid, "Invalid exponent digits")));
+                    }
+                    case MisplacedUnderscore detail -> {
+                        var base = detail.base();
+                        var placement = detail.placement();
+                        var message = switch (placement) {
+                            case LEADING -> "Underscore is not allowed at the start of a " + base.toLowerCase() + " literal";
+                            case TRAILING -> "Underscore is not allowed at the end of a " + base.toLowerCase() + " literal";
+                            case DOUBLE -> "Double underscore is not allowed in a " + base.toLowerCase() + " literal";
+                            case BEFORE_DECIMAL_POINT -> "Underscore is not allowed immediately before decimal point '.'";
+                            case AFTER_DECIMAL_POINT -> "Underscore is not allowed immediately after decimal point '.'";
+                        };
+                        var literal = source.currentSpan();
+                        var underscore = source.spanAt(literal.startOffset() + detail.offset(), detail.length());
+                        DiagnosticReporter.report(ScannerDiagnostic.numericLiteralError(
+                                message,
+                                Label.of(literal, "Invalid " + base.toLowerCase() + " literal!"),
+                                Label.primaryOf(underscore, switch (placement) {
+                                    case BEFORE_DECIMAL_POINT -> "Invalid underscore before decimal point";
+                                    case AFTER_DECIMAL_POINT -> "Invalid underscore after decimal point";
+                                    default -> "Invalid " + placement.toLowerCase() + " underscore";
+                                })));
+                    }
+                }
+
+                addToken(ERROR);
+                return;
+            }
+        }
+
+        DiagnosticReporter.report(InternalError.unexpectedCompilerError(
+                source.currentSpan(), "Failed to parse numeric literal"));
+        addToken(ERROR);
+    }
+
+    private void lineComment() {
+        while (!peek('\n') && !isAtEnd()) advance();
     }
 
     private void multiLineComment() {
@@ -312,7 +512,7 @@ public class Scanner {
             }
         }
 
-        DiagnosticReporter.report(Diagnostic.Scanner.unbalancedMultilineComment(
+        DiagnosticReporter.report(ScannerDiagnostic.unbalancedMultilineComment(
                 start, source.spanAt(source.current(), 1)));
     }
 
@@ -320,11 +520,32 @@ public class Scanner {
         tokens.add(source.token(tokenType));
     }
 
+    private void addToken(TokenType tokenType, Object value) {
+        tokens.add(source.token(tokenType, value));
+    }
+
     private void addDoubleToken(TokenType singleToken, char secondChar, TokenType doubleToken) {
         addToken(match(secondChar) ? doubleToken : singleToken);
     }
 
-    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+    private boolean isAlphaNumeric(char c) {
+        return isDigit(c) || isAlpha(c);
+    }
+
+    private boolean isHexDigit(char c) {
+        return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    private boolean isDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    private boolean isAlpha(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    }
+
+    //<editor-fold desc="Scanner delegate methods">
+
     private boolean isAtEnd() {
         return source.isAtEnd();
     }
@@ -337,7 +558,22 @@ public class Scanner {
         return source.match(c);
     }
 
+    private boolean match(CharPredicate predicate) {
+        return source.match(predicate);
+    }
+
     private char peek() {
         return source.peek();
     }
+
+    private boolean peek(char c) {
+        return source.peek(c);
+    }
+
+    private char peekNext() {
+        return source.peekNext();
+    }
+
+    //</editor-fold>
+
 }

@@ -4,7 +4,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -44,7 +43,7 @@ public record Diagnostic(
     ///                         These include typechecker diagnostics, linting notices, correctness issues, improvement suggestions, etc.
     public enum Code {
         /// Marker exception for pieces of code that are not implemented yet.
-        NotImplemented("BCE000000"),
+        CompilerBug("BCE000000"),
 
         /// Internal diagnostic message to be printed if Scanner test cases fail to be parsed.
         ///
@@ -67,7 +66,13 @@ public record Diagnostic(
         ScannerUnexpectedCharacter("BCE000100"),
 
         /// Unbalanced multiline comment
-        ScannerUnbalancedMultilineComment("BCE000101");
+        ScannerUnbalancedMultilineComment("BCE000101"),
+
+        /// Failure to parse numeric literal value
+        ScannerNumericLiteralError("BCE000110"),
+
+        /// Failed to parse a boolean literal value
+        ScannerInvalidBooleanLiteral("BCE000120");
 
         Code(String code) {
             this.code = code;
@@ -120,11 +125,16 @@ public record Diagnostic(
 
 
     @SuppressWarnings("unused")
-    public static final class Internal {
-        private Internal() { /* sealed */}
+    public static final class InternalError {
+        private InternalError() { /* sealed */}
 
         public static Diagnostic notImplemented(SourceSpan sourceSpan, String message) {
-            return error(Code.NotImplemented, "Not implemented!",
+            return error(Code.CompilerBug, "Not implemented!",
+                    List.of(new Label(sourceSpan, message, true)));
+        }
+
+        public static Diagnostic unexpectedCompilerError(SourceSpan sourceSpan, String message) {
+            return error(Code.CompilerBug, "Unexpected compiler error!",
                     List.of(new Label(sourceSpan, message, true)));
         }
 
@@ -151,8 +161,8 @@ public record Diagnostic(
 
     }
 
-    public static final class Scanner {
-        private Scanner() {/* sealed */}
+    public static final class ScannerDiagnostic {
+        private ScannerDiagnostic() {/* sealed */}
 
         public static Diagnostic unexpectedCharacter(SourceSpan span) {
             return error(Code.ScannerUnexpectedCharacter, "Unexpected character",
@@ -163,6 +173,34 @@ public record Diagnostic(
             return error(Code.ScannerUnbalancedMultilineComment, "Unbalanced Multiline comment",
                     List.of(Label.primaryOf(startSpan, "Multi-line comment starts here"),
                             Label.of(endSpan, "Still no end of comment")));
+        }
+
+        public static Diagnostic numericLiteralError(String message, Label label) {
+            return numericLiteralError(message, List.of(label));
+        }
+
+        public static Diagnostic numericLiteralError(String message, Label ... labels) {
+            return numericLiteralError(message, List.of(labels));
+        }
+
+        public static Diagnostic numericLiteralError(Label ... labels) {
+            return numericLiteralError(List.of(labels));
+        }
+
+        public static Diagnostic numericLiteralError(List<Label> labels) {
+            return numericLiteralError(labels, List.of());
+        }
+
+        public static Diagnostic numericLiteralError(String message, List<Label> labels) {
+            return numericLiteralError(message, labels, List.of());
+        }
+
+        public static Diagnostic numericLiteralError(List<Label> labels, List<String> suggestions) {
+            return numericLiteralError("Failed to parse numeric literal value", labels, suggestions);
+        }
+
+        public static Diagnostic numericLiteralError(String message, List<Label> labels, List<String> suggestions) {
+            return error(Code.ScannerNumericLiteralError, message, labels, suggestions);
         }
 
     }

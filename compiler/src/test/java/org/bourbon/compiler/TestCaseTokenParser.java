@@ -17,6 +17,7 @@ import static org.bourbon.compiler.TokenType.DOT_DOT;
 import static org.bourbon.compiler.TokenType.EOF;
 import static org.bourbon.compiler.TokenType.EQUAL;
 import static org.bourbon.compiler.TokenType.EQUAL_EQUAL;
+import static org.bourbon.compiler.TokenType.ERROR;
 import static org.bourbon.compiler.TokenType.FAT_ARROW;
 import static org.bourbon.compiler.TokenType.GREATER;
 import static org.bourbon.compiler.TokenType.GREATER_EQUAL;
@@ -56,9 +57,12 @@ import static org.bourbon.compiler.TokenType.TILDE_EQUAL;
 import static org.bourbon.compiler.TokenType.TRIPLE_DOT;
 import static org.bourbon.compiler.TokenType.TRIPLE_EQUAL;
 
+import java.util.List;
 import java.util.Map;
 
+import org.bourbon.compiler.literal.NumberLiteral;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.extension.TestInstantiationException;
 
 public class TestCaseTokenParser {
     private static final Map<TokenType, String> DEFAULT_LEXEMES = Map.<TokenType, String>ofEntries(
@@ -119,6 +123,7 @@ public class TestCaseTokenParser {
             // Keywords
 
             // EOF
+            entry(ERROR, ""),
             entry(EOF, "")
     );
 
@@ -126,28 +131,35 @@ public class TestCaseTokenParser {
     private final int lineNumber;
     private final int lineOffset;
 
+    private final TokenDiagnosticReporter Report;
+
     private TestCaseTokenParser(Source source, int lineNumber, int lineOffset) {
         this.source = source;
         this.lineNumber = lineNumber;
         this.lineOffset = lineOffset;
+
+        this.Report = new TokenDiagnosticReporter(source);
     }
 
-    public static Token parse(Source source, int lineNumber, int lineOffset) {
+    public static @Nullable Token parse(Source source, int lineNumber, int lineOffset) {
         return new TestCaseTokenParser(source, lineNumber, lineOffset).parseToken();
     }
 
-    private Token parseToken() {
+    private @Nullable Token parseToken() {
         var type = conumeTokenType();
+        if (type == null) {
+            return null;
+        }
 
         var lexeme = consumeLexeme();
         if (lexeme == null) {
             lexeme = DEFAULT_LEXEMES.get(type);
             if (lexeme == null) {
-                throw new TestCaseTokenParserException(source.currentSpan(), "Expected lexeme for token type " + type);
+                throw Report.lexemeExpected(type);
             }
         }
 
-        var literal = consumeLiteral();
+        var literal = consumeLiteral(type);
         if (literal == null) {
             literal = parseLiteral(type, lexeme);
         }
@@ -171,7 +183,7 @@ public class TestCaseTokenParser {
         }
 
         if (c != '\n' && c != '\0') {
-            throw new TestCaseTokenParserException(source.currentSpan(), "Expected source span range starting with '[' or end of line");
+            throw Report.expectedSpanRangeStart();
         }
 
         return new Token(type, lexeme, literal, lineNumber, columnNumber, startOffset, length);
@@ -179,27 +191,27 @@ public class TestCaseTokenParser {
 
     private void consumeClosingBracket() {
         if (!source.match(']')) {
-            throw new TestCaseTokenParserException(source.currentSpan(), "Expected closing bracket ']' to complete the source range");
+            throw Report.expectedSpanRangeEnd();
         }
         source.tokenStart();
     }
 
     private void consumeRangeSeparator() {
         if (!source.match("..")) {
-            throw new TestCaseTokenParserException(source.currentSpan(), "Expected '..' range separator");
+            throw Report.expectedSpanRangeSeparator();
         }
         source.tokenStart();
     }
 
     private void consumeAtCharacter() {
         char c = requireNotEnd(skipWhitespace());
-        if (c != '@') throw new TestCaseTokenParserException(source.currentSpan(), "Expected '@' before column number");
+        if (c != '@') throw Report.expectedAtSymbol();
         source.tokenStart();
     }
 
     private int consumeNumber(String numberRole) {
         char c = requireNotEnd(skipWhitespace());
-        if  (!isDigit(c)) throw new TestCaseTokenParserException(source.currentSpan(), "Expected token " + numberRole);
+        if  (!isDigit(c)) throw Report.numericValueExpected(numberRole);
         while (!isAtEnd() && isDigit(source.peek())) source.advance();
         String lexeme = source.lexeme();
         source.tokenStart();
@@ -210,44 +222,26 @@ public class TestCaseTokenParser {
         return '0' <= c && c <= '9';
     }
 
-    private @Nullable Object consumeLiteral() {
+    private @Nullable Object consumeLiteral(TokenType type) {
         String lexeme = consumeLexeme();
         if (lexeme == null) return null;
         if (lexeme.isBlank()) return null;
 
         if (lexeme.startsWith("\"") && lexeme.endsWith("\"")) {
-            return lexeme.substring(1, lexeme.length() - 1);
+            lexeme = lexeme.substring(1, lexeme.length() - 1);
+        } else if (lexeme.startsWith("'") && lexeme.endsWith("'")) {
+            lexeme = lexeme.substring(1, lexeme.length() - 1);
         }
 
-        if (lexeme.startsWith("'") && lexeme.endsWith("'")) {
-            return lexeme.substring(1, lexeme.length() - 1);
-        }
-
-        if (lexeme.startsWith("0x") && lexeme.length() > 2) {
-            return Integer.parseInt(lexeme.substring(2), 16);
-        }
-
-        if (lexeme.startsWith("0b") && lexeme.length() > 2) {
-            return Integer.parseInt(lexeme.substring(2), 2);
-        }
-
-        if (lexeme.startsWith("0") && lexeme.length() > 1) {
-            return Integer.parseInt(lexeme.substring(1), 8);
-        }
-
-        if (lexeme.matches("-?\\d+(\\.\\d+)?")) {
-            return Double.parseDouble(lexeme);
-        }
-
-        return lexeme;
+        return parseLiteral(type, lexeme);
     }
 
     private Object parseLiteral(TokenType type, String lexeme) {
-        if (type == TokenType.STRING) {
-            return lexeme.substring(1, lexeme.length() - 1);
-        }
-
-        return null;
+        return switch (type) {
+            case STRING -> lexeme;
+            case NUMBER -> NumberLiteral.parse(lexeme);
+            default -> null;
+        };
     }
 
     private @Nullable String consumeLexeme() {
@@ -274,10 +268,16 @@ public class TestCaseTokenParser {
     }
 
     private TokenType conumeTokenType() {
-        char c = requireNotEnd(skipWhitespace());
+        char c = skipWhitespace();
+        if (isAtEnd()) {
+            source.tokenStart();
+            return null;
+        }
 
-        if (!Character.isJavaIdentifierStart(c))
-            throw new TestCaseTokenParserException(source.currentSpan(), "Token type identifier expected!");
+        if (!Character.isJavaIdentifierStart(c)) {
+            while (!isAtEnd() && !isWhitespace()) source.advance();
+            throw Report.tokenNameExpected();
+        }
 
         while (!isAtEnd() && Character.isJavaIdentifierPart(source.peek())) source.advance();
         try {
@@ -285,16 +285,16 @@ public class TestCaseTokenParser {
             source.tokenStart();
             return tokenType;
         } catch (IllegalArgumentException e) {
-            throw new TestCaseTokenParserException(source.currentSpan(), "Unrecognized token: " + source.lexeme());
+            throw Report.unrecognizedToken();
         }
     }
 
     private char requireNotEnd(char c) {
         if (c == '\n')
-            throw TestCaseTokenParserException.unexpectedEndOfLine(source.currentSpan());
+            throw Report.unexpectedEndOfLine();
 
         if (c == '\0')
-            throw TestCaseTokenParserException.unexpectedEndOfInput(source.currentSpan());
+            throw Report.unexpectedEndOfInput();
 
         return c;
     }
@@ -332,11 +332,11 @@ public class TestCaseTokenParser {
             }
 
             if (c == '\n') {
-                throw TestCaseTokenParserException.unexpectedEndOfLine(source.currentSpan());
+                throw Report.unexpectedEndOfLine();
             }
         }
 
-        throw TestCaseTokenParserException.unexpectedEndOfInput(source.currentSpan());
+        throw Report.unexpectedEndOfInput();
     }
 
     private String stripQuotes(String string) {
@@ -367,19 +367,67 @@ public class TestCaseTokenParser {
         };
     }
 
-    public static class TestCaseTokenParserException extends TestCaseParserException {
-    
-        public TestCaseTokenParserException(SourceSpan sourceSpan, String message) {
-            super(Diagnostic.Code.ScannerTestCaseParserError, sourceSpan, message);
-        }
-    
-        static TestCaseTokenParserException unexpectedEndOfLine(SourceSpan sourceSpan) {
-            return new TestCaseTokenParserException(sourceSpan, "Unexpected end of line");
-        }
+    private record TokenDiagnosticReporter(Source source) {
 
-        static TestCaseTokenParserException unexpectedEndOfInput(SourceSpan sourceSpan) {
-            return new TestCaseTokenParserException(sourceSpan, "Unexpected end of input");
-        }
+        private Diagnostic report(Diagnostic diagnostic) {
+                DiagnosticReporter.report(diagnostic);
+                return diagnostic;
+            }
+
+            TestInstantiationException error(String message, List<Label> labels) {
+                var error = report(Diagnostic.error(Diagnostic.Code.ScannerTestCaseParserError, message, labels));
+                return TestInitiaitionErrors.toException(error);
+            }
+
+            TestInstantiationException unexpectedEndOfLine() {
+                return error("Failed to parse " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Unexpected end of line")));
+            }
+
+            TestInstantiationException unexpectedEndOfInput() {
+                return error("Failed to parse " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Unexpected end of input")));
+            }
+
+            TestInstantiationException unrecognizedToken() {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Unrecognized token: " + source.lexeme())));
+            }
+
+            TestInstantiationException tokenNameExpected() {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Token name expected!")));
+            }
+
+            TestInstantiationException lexemeExpected(TokenType type) {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Expected lexeme for token type " + type)));
+            }
+
+            TestInstantiationException numericValueExpected(String numberRole) {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Expected token " + numberRole)));
+            }
+
+            TestInstantiationException expectedAtSymbol() {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Expected '@' separator before column number")));
+            }
+
+            TestInstantiationException expectedSpanRangeStart() {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Expected source span range starting with '[' or end of line")));
+            }
+
+            TestInstantiationException expectedSpanRangeSeparator() {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Expected '..' as span range separator")));
+            }
+
+            TestInstantiationException expectedSpanRangeEnd() {
+                return error("Failed to parse token in " + source.name(), List.of(
+                        Label.primaryOf(source.currentSpan(), "Expected closing bracket ']' to complete the source range")));
+            }
+
     }
-
 }

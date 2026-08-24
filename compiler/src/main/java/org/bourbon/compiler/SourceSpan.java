@@ -1,6 +1,7 @@
 package org.bourbon.compiler;
 
 import java.nio.file.Path;
+import java.util.function.IntUnaryOperator;
 
 public record SourceSpan(
         SourceName name,
@@ -8,6 +9,10 @@ public record SourceSpan(
         int column,
         int startOffset,
         int length) {
+
+    public SourceSpan withLength(IntUnaryOperator length) {
+        return new SourceSpan(name, line, column, startOffset, length.applyAsInt(this.length));
+    }
 
     public interface Provider {
         SourceSpan at(int line, int column, int startOffset, int length);

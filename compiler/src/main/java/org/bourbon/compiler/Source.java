@@ -6,9 +6,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -20,19 +17,15 @@ import org.jspecify.annotations.Nullable;
 public class Source implements CharSequence {
 
     private final CharSequence content;
+    private final LineIndex lineIndex;
     private final String name;
 
     private int start = 0;
     private int current = 0;
-    private char currentChar = '\0';
 
-    private int startLine = 1;
-    private int currentLine = 1;
-    private final List<Integer> lineOffsets = new ArrayList<>(List.of(start));
-
-
-    private Source(CharSequence content, String name) {
+    private Source(CharSequence content, LineIndex lineIndex, String name) {
         this.content = content;
+        this.lineIndex = lineIndex;
         this.name = name;
     }
 
@@ -44,6 +37,11 @@ public class Source implements CharSequence {
         return name;
     }
 
+    @FunctionalInterface
+    public interface CharPredicate {
+        boolean test(char c);
+    }
+
     //<editor-fold desc="Current source positions">
 
     int column() {
@@ -51,11 +49,7 @@ public class Source implements CharSequence {
     }
 
     int column(int offset) {
-        if (offset == start) return start - lineOffset(startLine) + 1;
-        if (offset == current) return current - lineOffset(currentLine) + 1;
-
-        int lineOffset = lineOffsetAt(offset);
-        return offset - lineOffset + 1;
+        return lineIndex.columnNumberOf(offset);
     }
 
     int start() {
@@ -67,27 +61,15 @@ public class Source implements CharSequence {
     }
 
     int currentLine() {
-        return currentLine;
+        return lineIndex.lineNumberOf(current);
     }
 
-    private int lineOffset(int line) {
-        return lineOffsets.get(line - 1);
+    int startLine() {
+        return lineIndex.lineNumberOf(start);
     }
 
-    private int lineOffsetAt(int offset) {
-        return lineOffset(lineNumberAt(offset));
-    }
-
-    public List<Integer> lineOffsets() {
-        return Collections.unmodifiableList(lineOffsets);
-    }
-
-    private int lineNumberAt(int offset) {
-        if (offset == start) return startLine;
-        if (offset == current) return currentLine;
-
-        int index = Collections.binarySearch(lineOffsets, offset);
-        return index >= 0 ? index : -index - 1;
+    public LineIndex lineOffsets() {
+        return lineIndex;
     }
 
     //</editor-fold>
@@ -99,7 +81,6 @@ public class Source implements CharSequence {
     }
 
     public void tokenStart() {
-        startLine = currentLine;
         start = current;
     }
 
@@ -108,42 +89,28 @@ public class Source implements CharSequence {
     }
 
     Source resetToLine(int line) {
-        if (line < 1) throw new IllegalArgumentException("line must be greater than zero");
-        if (line <= lineOffsets.size()) {
-            current = lineOffset(line);
-            currentLine = line;
-            tokenStart();
-        } else {
-            while (!isAtEnd() && currentLine < line) advance();
-            tokenStart();
-        }
+        current = lineIndex.lineOffset(line);
+        tokenStart();
         return this;
     }
 
     public char advance() {
-        currentChar = charAt(current++);
-        if (currentChar == '\n') {
-            lineOffsets.add(currentLine++, current);
-        }
-        return currentChar;
+        if (isAtEnd()) return '\0';
+        return charAt(current++);
     }
 
     public char peek() {
-        if (isAtEnd())
-            return '\0';
+        if (isAtEnd()) return '\0';
         return charAt(current);
     }
 
     public boolean peek(char expected) {
-        if (isAtEnd())
-            return false;
-
+        if (isAtEnd()) return false;
         return charAt(current) == expected;
     }
 
     public boolean peek(CharSequence expected) {
-        if (isAtEnd())
-            return false;
+        if (isAtEnd()) return false;
 
         for (int i = 0; i < expected.length(); i++) {
             if (charAt(current + i) != expected.charAt(i))
@@ -152,9 +119,14 @@ public class Source implements CharSequence {
         return true;
     }
 
+    public char peekNext() {
+        if (current + 1 >= length()) return '\0';
+        return charAt(current + 1);
+    }
+
     public boolean match(char expected) {
         if (peek(expected)) {
-            current++;
+            advance();
             return true;
         }
 
@@ -163,7 +135,18 @@ public class Source implements CharSequence {
 
     public boolean match(CharSequence expected) {
         if (peek(expected)) {
-            current += expected.length();
+            // advance steps through each character,
+            // counting line numbers and offsets
+            expected.chars().forEach(_ -> advance());
+            return true;
+        }
+
+        return false;
+    }
+
+    public boolean match(CharPredicate expected) {
+        if (expected.test(peek())) {
+            advance();
             return true;
         }
 
@@ -179,7 +162,7 @@ public class Source implements CharSequence {
     }
 
     public Token token(TokenType type, @Nullable Object literal) {
-        return new Token(type, lexeme(), literal, startLine, column(), start, current - start);
+        return new Token(type, lexeme(), literal, startLine(), column(), start, current - start);
     }
 
     //</editor-fold>
@@ -196,16 +179,14 @@ public class Source implements CharSequence {
     }
 
     public final SourceSpan spanAt(int startOffset, int length) {
-        assert current <= startOffset : "Cannot create spans past current cursor position!";
+        if (startOffset == start) return sourceSpan().at(lineIndex.lineNumberOf(startOffset), column(start), start, length);
+        if (startOffset == current) return sourceSpan().at(currentLine(), column(current), current, length);
 
-        if (startOffset == start) return sourceSpan().at(startLine, column(), start, length);
-        if (startOffset == current) return sourceSpan().at(currentLine, column(current), current, length);
-
-        return sourceSpan().at(lineNumberAt(startOffset), column(startOffset), startOffset, length);
+        return sourceSpan().at(lineIndex.lineNumberOf(startOffset), column(startOffset), startOffset, length);
     }
 
     public final SourceSpan currentSpan() {
-        return sourceSpan().at(startLine, column(), start, current - start);
+        return sourceSpan().at(startLine(), column(start), start, current - start);
     }
 
     //</editor-fold>
@@ -268,11 +249,10 @@ public class Source implements CharSequence {
         }
 
         public Source of(CharSequence content) {
-            return new Source(content, name);
+            var lineIndex = LineIndex.scan(content);
+            return new Source(content, lineIndex, name);
         }
     }
-
-    //</editor-fold>
 
     static abstract class Content {
         public static CharSequence read(InputStream input) throws IOException {
@@ -287,4 +267,58 @@ public class Source implements CharSequence {
             return Files.readString(filePath);
         }
     }
+
+    //</editor-fold>
+
+    //<editor-fold desc="Debugger helpers">
+
+    @SuppressWarnings("unused")
+    private String debugCurrentSpan() {
+        String s = "";
+        if (start > 5) {
+            s += charAt(0) + "/../" + charAt(start - 1);
+        } else {
+            s += subSequence(0, start);
+        }
+
+        if (start < current) {
+            s += "⸢" + lexeme() + "⸣";
+        }
+
+        s += "⸤" + peek() + "⸥";
+
+        if (current < length() - 5) {
+            s += "/../" + charAt(length() - 1);
+        } else {
+            s += subSequence(current + 1, length());
+        }
+
+        return s;
+    }
+
+    @SuppressWarnings("unused")
+    private String debugStartLine() {
+        String s = "";
+        int startLine = startLine();
+        int startOffset = lineIndex.lineOffset(startLine);
+        if (startOffset < start) s += subSequence(startOffset, start);
+
+        int endOffset = lineIndex.lineOffset(startLine + 1);
+        if (start < current && current < endOffset) {
+            s += "⸢" + subSequence(start, current) + "⸣";
+            s += "⸤" + charAt(current) + "⸥";
+            s += subSequence(current + 1, endOffset);
+        }
+        else if (start == current && current < endOffset) {
+            s += "⸤" + charAt(current) + "⸥";
+            s += subSequence(current + 1, endOffset);
+        }
+        else if (start < endOffset && endOffset < current) {
+            s += "⸢" + subSequence(start, endOffset) + "…";
+        }
+
+        return s;
+    }
+
+    //</editor-fold>
 }

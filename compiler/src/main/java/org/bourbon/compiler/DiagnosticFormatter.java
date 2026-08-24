@@ -1,6 +1,7 @@
 package org.bourbon.compiler;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.function.Consumer;
 
 import org.jline.utils.AttributedString;
@@ -138,7 +139,7 @@ public final class DiagnosticFormatter {
             out.print(formatDivider(lineNumWidth));
 
             var sortedLabels = new ArrayList<>(labels);
-            sortedLabels.sort((l1, l2) -> Integer.compare(l1.span().startOffset(), l2.span().startOffset()));
+            sortedLabels.sort(Comparator.comparingInt(l -> l.span().startOffset()));
 
             int lastLineIndex = -1;
             for (var label : sortedLabels) {

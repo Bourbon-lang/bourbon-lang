@@ -1,10 +1,12 @@
 package org.bourbon.compiler.junit.diff;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.bourbon.compiler.Diagnostic;
 import org.bourbon.compiler.Label;
@@ -227,8 +229,8 @@ public final class DiagnosticDiffEngine {
             return 1.0;
         }
 
-        var firstWords = Set.of(firstString.toLowerCase().split("\\s+"));
-        var secondWords = Set.of(secondString.toLowerCase().split("\\s+"));
+        var firstWords = Arrays.stream(firstString.toLowerCase().split("\\s+")).collect(Collectors.toSet());
+        var secondWords = Arrays.stream(secondString.toLowerCase().split("\\s+")).collect(Collectors.toSet());
 
         var intersection = new HashSet<>(firstWords);
         intersection.retainAll(secondWords);

@@ -7,7 +7,7 @@ directories:
   -bazel-testlogs
   -node_modules
   -build
-  -.mise
+  -mise
 test_sources:
   compiler/src/test/java
 

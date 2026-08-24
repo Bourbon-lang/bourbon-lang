@@ -11,7 +11,6 @@ import org.bourbon.compiler.Token;
 import org.bourbon.compiler.junit.diff.DiagnosticDiffEngine;
 import org.bourbon.compiler.junit.diff.DiffEntry;
 import org.bourbon.compiler.junit.diff.FieldChange;
-import org.bourbon.compiler.junit.diff.InlineTextDiff;
 import org.bourbon.compiler.junit.diff.TokenDiffEngine;
 import org.junit.jupiter.api.function.Executable;
 import org.opentest4j.MultipleFailuresError;

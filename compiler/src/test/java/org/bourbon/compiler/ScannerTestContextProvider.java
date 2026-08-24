@@ -1,13 +1,11 @@
 package org.bourbon.compiler;
 
 import java.io.IOException;
-import java.io.StringWriter;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
+import org.bourbon.compiler.Source.Content;
 import org.bourbon.compiler.effects.Effects;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.extension.Extension;
@@ -18,7 +16,6 @@ import org.junit.jupiter.api.extension.TestInstantiationException;
 import org.junit.jupiter.api.extension.TestTemplateInvocationContext;
 import org.junit.jupiter.api.extension.TestTemplateInvocationContextProvider;
 import org.junit.platform.commons.io.Resource;
-import org.bourbon.compiler.Source.Content;
 
 @NullMarked
 public class ScannerTestContextProvider implements TestTemplateInvocationContextProvider {
@@ -39,7 +36,9 @@ public class ScannerTestContextProvider implements TestTemplateInvocationContext
             testResources = testResources.filter(resource -> resource.getName().endsWith(testCaseFilter));
         }
 
-        return testResources.map(resource -> scannerTestContext(context, resource));
+        return testResources
+                .sorted(Comparator.comparing(Resource::getName))
+                .map(resource -> scannerTestContext(context, resource));
     }
 
     private boolean isValidTestCase(Resource resource) {
@@ -48,11 +47,16 @@ public class ScannerTestContextProvider implements TestTemplateInvocationContext
 
     private TestTemplateInvocationContext scannerTestContext(ExtensionContext context, Resource resource) {
         try (var in = resource.getInputStream()) {
-            var source = Source.named(resource.getName()).of(Content.read(in));
+            Source source = Source.named(resource.getName()).of(Content.read(in));
             var parser = new ScannerTestCaseParser(source);
 
-            var testCase = Effects.handle(parser::parseTestCase).with(
-                    DiagnosticReporter.Handler.class, diagnostic -> DiagnosticFormatter.format(source, diagnostic, System.err::print))
+            var testCase = Effects.handle(parser::parseTestCase)
+                    .with(DiagnosticReporter.Handler.class, diagnostic -> DiagnosticFormatter.format(source, diagnostic, System.err::print))
+                    .onException(IllegalArgumentException.class, e -> {
+                        var lexeme = source.lexeme();
+                        var span = source.currentSpan();
+                        throw new TestInstantiationException("Failure to parse scanner test case " + resource.getName() + ":" + span.line() + ":" + span.column() + " at '" + lexeme + "' : " + e.getMessage());
+                    })
                     .get();
 
             return scannerTestContext(parser.getDisplayName(), testCase);

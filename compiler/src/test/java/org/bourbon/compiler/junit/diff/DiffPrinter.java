@@ -39,9 +39,15 @@ public final class DiffPrinter {
     }
 
     public void printDiff(PrintStream destinationStream) {
+        var outputMode = InlineTextDiff.OutputMode.PLAIN_TEXT;
+        if (destinationStream == System.out || destinationStream == System.err) {
+            if (System.console() != null && System.console().isTerminal()) {
+                outputMode = InlineTextDiff.OutputMode.ANSI_TERMINAL;
+            }
+        }
         printHeaderSummary(destinationStream);
-        printDiffEntries(verbose, tokenDiffEntries, destinationStream);
-        printDiffEntries(verbose, diagnosticDiffEntries, destinationStream);
+        printDiffEntries(verbose, tokenDiffEntries, destinationStream, outputMode);
+        printDiffEntries(verbose, diagnosticDiffEntries, destinationStream, outputMode);
     }
 
     private void printHeaderSummary(PrintStream destinationStream) {
@@ -74,7 +80,8 @@ public final class DiffPrinter {
     }
 
 
-    public static <T> void printDiffEntries(boolean verbose, List<DiffEntry<T>> diffEntries, PrintStream destinationStream) {
+    public static <T> void printDiffEntries(boolean verbose, List<DiffEntry<T>> diffEntries, PrintStream destinationStream,
+            InlineTextDiff.OutputMode outputMode) {
         for (var diffEntry : diffEntries) {
             switch (diffEntry) {
                 case DiffEntry.Unchanged<T>(int expectedIndex, int actualIndex, T item) -> {
@@ -105,7 +112,7 @@ public final class DiffPrinter {
                                         && actualValue instanceof String actualString
                                         && !expectedString.contains("\n")
                                         && !actualString.contains("\n")) {
-                                    var inlineDiff = InlineTextDiff.formatInlineDiff(expectedString, actualString);
+                                    var inlineDiff = InlineTextDiff.formatInlineDiff(expectedString, actualString, outputMode);
                                     destinationStream.printf("      * %s: %s%n", fieldName, inlineDiff);
                                 } else {
                                     destinationStream.printf("      * %s: expected '%s', got '%s'%n",

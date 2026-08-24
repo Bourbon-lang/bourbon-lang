@@ -9,4 +9,5 @@ module bourbon.compiler {
     exports org.bourbon.compiler.cli;
 
     opens org.bourbon.compiler.cli to info.picocli;
+    exports org.bourbon.compiler.literal;
 }

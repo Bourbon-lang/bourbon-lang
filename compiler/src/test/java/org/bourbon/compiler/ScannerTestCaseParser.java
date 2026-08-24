@@ -2,7 +2,8 @@ package org.bourbon.compiler;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.StringJoiner;
+
+import javax.xml.xpath.XPathExpressionException;
 
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.TestInstantiationException;
@@ -16,12 +17,14 @@ class ScannerTestCaseParser {
 
     private final List<Token> expectedTokens = new ArrayList<>();
     private final List<Diagnostic> expectedDiagnostics = new ArrayList<>();
+    private final ScannerParserReporter Report;
 
     @Nullable
     private String displayName = null;
 
     ScannerTestCaseParser(Source source) {
         this.source = source;
+        this.Report = new ScannerParserReporter(source);
     }
 
     public String getDisplayName() {
@@ -29,8 +32,8 @@ class ScannerTestCaseParser {
     }
 
     @FunctionalInterface
-    public interface LineOffsets {
-        int get(String sourceName, int lineNumber);
+    public interface SourceLineIndex {
+        int lineOffsetAt(String sourceName, int lineNumber);
     }
 
     public ScannerTestCase parseTestCase() {
@@ -51,22 +54,21 @@ class ScannerTestCaseParser {
     private List<Token> expectedTokens(TestCaseSource source) {
         var lineOffsets = source.lineOffsets();
         if (expectedTokens.isEmpty() || expectedTokens.getLast().type() != TokenType.EOF) {
-            var lastLineOffset = lineOffsets.isEmpty() ? 0 : lineOffsets.getLast();
-            int lineNumber = lineOffsets.isEmpty() ? 1 : lineOffsets.size();
+            int lineNumber = lineOffsets.lines();
             expectedTokens.add(new Token(TokenType.EOF, "", null,
-                    lineNumber, 1, lastLineOffset, 0));
+                    lineNumber, 1, source.source().length(), 0));
         }
 
         return expectedTokens;
     }
 
-    private void consumeExpectations(List<Integer> lineOffsets) {
+    private void consumeExpectations(LineIndex lineIndex) {
         int lineNumber = 0;
         int lineOffset = 0;
         while (!isAtEnd()) {
             var line = skipEmptyLines();
             if (line.matches(TEST_CASE_SEPARATOR_REGEX)) {
-                lineOffset = lineOffsets.get(lineNumber++);
+                lineOffset = lineIndex.lineOffset(++lineNumber);
                 source.tokenStart();
                 continue;
             }
@@ -77,38 +79,26 @@ class ScannerTestCaseParser {
                 continue;
             }
 
-            if (lineNumber == 0)
-                throw Exceptions.expectLineSeparator(source.currentSpan());
+            if (lineNumber == 0) throw Report.expectLineSeparator();
 
             // Reset scanner position to start of the line
             source.tokenReset();
             if (TestCaseDiagnosticParser.isDiagnosticStart(source)) {
-                expectedDiagnostics.add(consumeDiagnostic(lineNumber, (_, number) ->
-                        (number > lineOffsets.size())
-                                ? source.length()
-                                : lineOffsets.get(number - 1)));
+                expectedDiagnostics.add(consumeDiagnostic(lineNumber, (_, number) -> lineIndex.lineOffset(number)));
             } else {
-                expectedTokens.add(consumeToken(lineNumber, lineOffset));
+                Token token = consumeToken(lineNumber, lineOffset);
+                if (token != null)
+                    expectedTokens.add(token);
             }
         }
     }
 
-    private Token consumeToken(int lineNumber, int lineOffset) {
-        try {
-            return TestCaseTokenParser.parse(source, lineNumber, lineOffset);
-        } catch (TestCaseParserException e) {
-            TestCaseParserException.printStackTrace(e, source);
-            throw new TestInstantiationException("Failed to parse token for " + source.name(), e);
-        }
+    private @Nullable Token consumeToken(int lineNumber, int lineOffset) {
+        return TestCaseTokenParser.parse(source, lineNumber, lineOffset);
     }
 
-    private Diagnostic consumeDiagnostic(int lineNumber, LineOffsets lineOffsets) {
-        try {
-            return TestCaseDiagnosticParser.parse(source, lineNumber, lineOffsets);
-        } catch (TestCaseParserException e) {
-            TestCaseParserException.printStackTrace(e, source);
-            throw new TestInstantiationException("Failed to parse diagnostic for " + source.name(), e);
-        }
+    private Diagnostic consumeDiagnostic(int lineNumber, SourceLineIndex sourceLineIndex) {
+        return TestCaseDiagnosticParser.parse(source, lineNumber, sourceLineIndex);
     }
 
     private String consumeHeader() {
@@ -123,7 +113,7 @@ class ScannerTestCaseParser {
         String line;
         line = skipEmptyLines();
         if (line.matches(HEADER_SEPARATOR_REGEX)) {
-            throw Exceptions.expectDisplayName(source.currentSpan());
+            throw Report.expectDisplayName();
         }
         return line;
     }
@@ -131,11 +121,11 @@ class ScannerTestCaseParser {
     private void requireHeaderSeparator() {
         var line = skipEmptyLines();
         if (!line.matches(HEADER_SEPARATOR_REGEX)) {
-            throw Exceptions.expectHeaderSeparator(source.currentSpan());
+            throw Report.expectHeaderSeparator();
         }
     }
 
-    record TestCaseSource(String source, List<Integer> lineOffsets) {}
+    record TestCaseSource(String source, LineIndex lineOffsets) {}
 
     private TestCaseSource consumeSource() {
         source.tokenStart();
@@ -153,12 +143,9 @@ class ScannerTestCaseParser {
         }
 
         var sourceText = source.subSequence(startOffset, source.current());
-        var lineOffsets = source.lineOffsets()
-                .subList(startLine - 1, source.currentLine()-1).stream()
-                .map(offset -> offset - startOffset)
-                .toList();
+        var lineOffsets = source.lineOffsets().slice(startLine, source.currentLine());
 
-        return new TestCaseSource(sourceText.toString(), List.copyOf(lineOffsets));
+        return new TestCaseSource(sourceText.toString(), lineOffsets);
     }
 
     private String skipEmptyLines() {
@@ -188,26 +175,33 @@ class ScannerTestCaseParser {
         return source.isAtEnd();
     }
 
-    private static StringJoiner stringJoiner() {
-        return new StringJoiner("\n", "", "\n");
-    }
-
-
-    static class Exceptions {
-
-        public static TestCaseParserException expectLineSeparator(SourceSpan sourceSpan) {
-            return new TestCaseParserException(Diagnostic.Code.ScannerTestCaseParserError, sourceSpan,
-                    "Expected at least one line separator: \"---\"");
+    private record ScannerParserReporter(Source source) {
+        private Diagnostic report(Diagnostic diagnostic) {
+            DiagnosticReporter.report(diagnostic);
+            return diagnostic;
         }
 
-        static TestCaseParserException expectHeaderSeparator(SourceSpan sourceSpan) {
-            return new TestCaseParserException(Diagnostic.Code.ScannerTestCaseParserError, sourceSpan,
-                    "Expected test header separator (a line of three or more '=' characters)");
+        private TestInstantiationException error(Diagnostic diagnostic) {
+            return TestInitiaitionErrors.toException(report(diagnostic));
         }
 
-        static TestCaseParserException expectDisplayName(SourceSpan sourceSpan) {
-            return new TestCaseParserException(Diagnostic.Code.ScannerTestCaseParserError, sourceSpan,
-                    "Expected test case display name");
+        private TestInstantiationException error(String message, Label label) {
+            return error(Diagnostic.error(Diagnostic.Code.ScannerTestCaseParserError, message, List.of(label)));
+        }
+
+        TestInstantiationException expectLineSeparator() {
+            return error("Failed to parse test case specification " + source.name(),
+                    Label.primaryOf(source.currentSpan(), "Expected at least one line separator: \"---\""));
+        }
+
+        TestInstantiationException expectHeaderSeparator() {
+            return error("Failed to parse test case specification " + source.name(),
+                    Label.primaryOf(source.currentSpan(), "Expected test header separator (a line of three or more '=' characters)"));
+        }
+
+        TestInstantiationException expectDisplayName() {
+            return error("Failed to parse test case specification " + source.name(),
+                    Label.primaryOf(source.currentSpan(), "Expected test case display name"));
         }
     }
 }

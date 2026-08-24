@@ -1,0 +1,223 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Bourbon Scanner Test Case",
+  "scopeName": "text.bourbon-test",
+  "fileTypes": [
+    "bourbon.txt"
+  ],
+  "uuid": "4F2F1B2E-6D7C-4C9D-A32F-5F1E2B0C3A4D",
+  "patterns": [
+    {
+      "comment": "Matches header and source section block (ignoring source highlighting)",
+      "begin": "\\A(={3,})\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.separator.header.bourbon-test"
+        }
+      },
+      "end": "^(-{3,})\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.separator.bourbon-test"
+        }
+      },
+      "patterns": [
+        {
+          "comment": "Actual header metadata block",
+          "begin": "\\A(={3,})\\s*$",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.separator.header.bourbon-test"
+            }
+          },
+          "end": "^(={3,})\\s*$",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.separator.header.bourbon-test"
+            }
+          },
+          "patterns": [
+            {
+              "match": ".+",
+              "name": "entity.name.section.bourbon-test"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "comment": "Expectation section separators",
+      "match": "^(-{3,})\\s*$",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.separator.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Line comments in the expectations section",
+      "match": "^\\s*(#.*)$",
+      "captures": {
+        "1": {
+          "name": "comment.line.number-sign.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Diagnostic errors",
+      "match": "^([✗\\uF057]|\\s)*\\b(error)\\b\\s*(\\[[a-zA-Z0-9]+\\])?\\s*(:)\\s*(.*)$",
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.symbol.diagnostic.bourbon-test"
+        },
+        "2": {
+          "name": "invalid.illegal.severity.diagnostic.bourbon-test"
+        },
+        "3": {
+          "name": "entity.name.tag.code.diagnostic.bourbon-test"
+        },
+        "4": {
+          "name": "punctuation.separator.diagnostic.bourbon-test"
+        },
+        "5": {
+          "name": "string.unquoted.message.diagnostic.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Diagnostic warnings",
+      "match": "^([⚠\\uF071]|\\s)*\\b(warning)\\b\\s*(\\[[a-zA-Z0-9]+\\])?\\s*(:)\\s*(.*)$",
+      "captures": {
+        "1": {
+          "name": "invalid.deprecated.symbol.diagnostic.bourbon-test"
+        },
+        "2": {
+          "name": "invalid.deprecated.severity.diagnostic.bourbon-test"
+        },
+        "3": {
+          "name": "entity.name.tag.code.diagnostic.bourbon-test"
+        },
+        "4": {
+          "name": "punctuation.separator.diagnostic.bourbon-test"
+        },
+        "5": {
+          "name": "string.unquoted.message.diagnostic.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Diagnostic info and notes",
+      "match": "^([ℹ✔\\uF05A]|\\s)*\\b(note|info)\\b\\s*(\\[[a-zA-Z0-9]+\\])?\\s*(:)\\s*(.*)$",
+      "captures": {
+        "1": {
+          "name": "markup.bold.info.symbol.diagnostic.bourbon-test"
+        },
+        "2": {
+          "name": "markup.bold.info.severity.diagnostic.bourbon-test"
+        },
+        "3": {
+          "name": "entity.name.tag.code.diagnostic.bourbon-test"
+        },
+        "4": {
+          "name": "punctuation.separator.diagnostic.bourbon-test"
+        },
+        "5": {
+          "name": "string.unquoted.message.diagnostic.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Diagnostic location link",
+      "match": "^\\s*(-->)\\s*([^:]+)\\s*(:)\\s*([0-9]+)\\s*(:)\\s*([0-9]+)\\s*$",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.location.bourbon-test"
+        },
+        "2": {
+          "name": "string.other.filename.bourbon-test"
+        },
+        "3": {
+          "name": "punctuation.separator.location.bourbon-test"
+        },
+        "4": {
+          "name": "constant.numeric.line.bourbon-test"
+        },
+        "5": {
+          "name": "punctuation.separator.location.bourbon-test"
+        },
+        "6": {
+          "name": "constant.numeric.column.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Diagnostic empty/gutter line",
+      "match": "^\\s*(\\|)\\s*$",
+      "captures": {
+        "1": {
+          "name": "punctuation.separator.gutter.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Diagnostic source line preview",
+      "match": "^\\s*([0-9]+)\\s*(\\|)\\s*(.*)$",
+      "captures": {
+        "1": {
+          "name": "constant.numeric.line-number.gutter.bourbon-test"
+        },
+        "2": {
+          "name": "punctuation.separator.gutter.bourbon-test"
+        },
+        "3": {
+          "name": "markup.raw.source-code.diagnostic.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Diagnostic label underline line",
+      "match": "^\\s*(\\|)\\s*(\\s*)(\\^+)\\s*(.*)$",
+      "captures": {
+        "1": {
+          "name": "punctuation.separator.gutter.bourbon-test"
+        },
+        "2": {
+          "name": "markup.raw.source-code.diagnostic.bourbon-test"
+        },
+        "3": {
+          "name": "markup.underline.diagnostic.bourbon-test"
+        },
+        "4": {
+          "name": "string.unquoted.message.label.bourbon-test"
+        }
+      }
+    },
+    {
+      "comment": "Token assertion parsing",
+      "match": "^\\s*([A-Z_][A-Z0-9_]*)\\s*(.*?)\\s*(@)\\s*([0-9]+)(?:\\s*\\[\\s*([0-9]+)\\s*(\\.\\.)\\s*([0-9]+)\\s*\\])?\\s*$",
+      "captures": {
+        "1": {
+          "name": "support.type.token.bourbon-test"
+        },
+        "2": {
+          "name": "string.unquoted.lexeme.bourbon-test"
+        },
+        "3": {
+          "name": "punctuation.separator.at.bourbon-test"
+        },
+        "4": {
+          "name": "constant.numeric.column.bourbon-test"
+        },
+        "5": {
+          "name": "constant.numeric.offset.start.bourbon-test"
+        },
+        "6": {
+          "name": "punctuation.separator.range.bourbon-test"
+        },
+        "7": {
+          "name": "constant.numeric.offset.end.bourbon-test"
+        }
+      }
+    }
+  ]
+}

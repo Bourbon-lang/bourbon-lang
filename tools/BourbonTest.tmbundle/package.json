@@ -1,0 +1,25 @@
+{
+  "name": "bourbon-scanner-test-highlighter",
+  "displayName": "Bourbon Scanner Test Highlighter",
+  "description": "Syntax highlighting for Bourbon token scanner test case files.",
+  "version": "0.1.0",
+  "publisher": "bourbon-lang",
+  "engines": {
+    "vscode": "^1.0.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "bourbon-test",
+      "aliases": ["Bourbon Scanner Test Case"],
+      "extensions": [".bourbon.txt"]
+    }],
+    "grammars": [{
+      "language": "bourbon-test",
+      "scopeName": "text.bourbon-test",
+      "path": "./Syntaxes/BourbonTest.tmLanguage.json"
+    }]
+  }
+}

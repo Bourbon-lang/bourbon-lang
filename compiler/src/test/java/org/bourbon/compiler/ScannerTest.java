@@ -9,12 +9,15 @@ import org.bourbon.compiler.junit.diff.DiffPrinter;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @NullMarked
 @DisplayName("Scanner test")
+@TestMethodOrder(MethodOrderer.DisplayName.class)
 class ScannerTest {
 
     @TestTemplate
@@ -28,6 +31,7 @@ class ScannerTest {
                 @Override
                 public void report(Diagnostic diagnostic) {
                     actualDiagnostics.add(diagnostic);
+                    DiagnosticFormatter.format(testCase.input(), diagnostic, System.err::print);
                 }
             };
 
