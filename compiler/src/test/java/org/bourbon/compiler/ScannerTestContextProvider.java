@@ -3,10 +3,22 @@ package org.bourbon.compiler;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import org.bourbon.compiler.Source.Content;
+import org.bourbon.compiler.advisory.Advisory;
+import org.bourbon.compiler.advisory.AdvisoryConsole;
+import org.bourbon.compiler.advisory.AdvisoryLayout;
+import org.bourbon.compiler.advisory.AsciiAdvisoryConsole;
+import org.bourbon.compiler.diagnostic.Consultant;
+import org.bourbon.compiler.diagnostic.Diagnostic;
+import org.bourbon.compiler.diagnostic.DiagnosticLayer;
+import org.bourbon.compiler.diagnostic.DiagnosticPipeline;
+import org.bourbon.compiler.diagnostic.code.Catalog;
+import org.bourbon.compiler.diagnostic.code.DiagnosticCode;
 import org.bourbon.compiler.effects.Effects;
+import org.bourbon.compiler.effects.io.PrintWriter;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.extension.Extension;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -19,6 +31,7 @@ import org.junit.platform.commons.io.Resource;
 
 @NullMarked
 public class ScannerTestContextProvider implements TestTemplateInvocationContextProvider {
+    public static final ExtensionContext.Namespace BOURBON = ExtensionContext.Namespace.create(new Object());
 
     @Override
     public boolean supportsTestTemplate(ExtensionContext unused) {
@@ -48,18 +61,30 @@ public class ScannerTestContextProvider implements TestTemplateInvocationContext
     private TestTemplateInvocationContext scannerTestContext(ExtensionContext context, Resource resource) {
         try (var in = resource.getInputStream()) {
             Source source = Source.named(resource.getName()).of(Content.read(in));
-            var parser = new ScannerTestCaseParser(source);
+            context.getStore(BOURBON).put(resource.getName(), source);
 
-            var testCase = Effects.handle(parser::parseTestCase)
-                    .with(DiagnosticReporter.Handler.class, diagnostic -> DiagnosticFormatter.format(source, diagnostic, System.err::print))
-                    .onException(IllegalArgumentException.class, e -> {
-                        var lexeme = source.lexeme();
-                        var span = source.currentSpan();
-                        throw new TestInstantiationException("Failure to parse scanner test case " + resource.getName() + ":" + span.line() + ":" + span.column() + " at '" + lexeme + "' : " + e.getMessage());
-                    })
-                    .get();
+            try {
+                var parser = new ScannerTestCaseParser(source);
+                var testCase = Effects.handle(parser::parseTestCase)
+                        .with(Catalog.Handler.class, Catalog.builder()
+                                .add(DiagnosticCode::standardErrorCodes)
+                                .add(TestCaseError.class)
+                                .build())
+                        .with(Diagnostic.Handler.class, DiagnosticPipeline.to(new Consultant())
+                                .layer(DiagnosticLayer.validating())
+                                .build())
+                        .with(Advisory.Handler.class, new AdvisoryLayout(name ->
+                                Objects.requireNonNull(context.getStore(BOURBON).get(name, Source.class))))
+                        .with(AdvisoryConsole.Handler.class, new AsciiAdvisoryConsole())
+                        .with(PrintWriter.Handler.class, PrintWriter.of(System.err))
+                        .get();
 
-            return scannerTestContext(parser.getDisplayName(), testCase);
+                return scannerTestContext(parser.getDisplayName(), testCase);
+            } catch (IllegalArgumentException e) {
+                var lexeme = source.lexeme();
+                var span = source.currentSpan();
+                throw new TestInstantiationException("Failure to parse scanner test case " + resource.getName() + ":" + span.line() + ":" + span.column() + " at '" + lexeme + "' : " + e.getMessage());
+            }
         }
         catch (IOException e) {
             throw new TestInstantiationException("Failed to load scanner test case", e);

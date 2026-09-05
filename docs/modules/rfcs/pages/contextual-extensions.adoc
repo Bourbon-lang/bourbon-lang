@@ -1,0 +1,421 @@
+= RFC: Contextual Extensions, Mixins & Retroactive Conformance
+:navtitle: Contextual Extensions & Mixins
+
+* **Status**: Proposed / Draft
+* **Author**: Bourbon Design Group & Contributors
+* **Date**: 2026-09-11
+
+== Background & Problem Statement
+
+Modern software architectures frequently face the classic **Expression Problem**: how to enrich existing data types or ambient capabilities with new operations without mutating their original definitions, without introducing runtime wrapper allocations, and without falling back to clumsy design patterns like adapter classes or dependency injection containers.
+
+In object-functional languages, mechanisms for solving this often suffer from severe limitations:
+
+1. **Nominal Subclassing Inflexibility**: Standard class inheritance (`extends`) requires upfront planning and is inherently rigid. You cannot retroactively declare that an existing class or interface implements a newly devised contract without wrapping it in an adapter object.
+2. **Extension Method Limitations (C#, Kotlin)**: Traditional extension methods are static dispatch syntactic sugar (`Receiver.method() -> method(Receiver)`). They cannot satisfy an interface or promote a type to a new structural contract.
+3. **Impedance Mismatch with Ambient Effects**: When a component (such as a lexer or parser) runs inside an ambient algebraic effect context (e.g. `DiagnosticReporter`), the inner component often has rich local state (current line, column, byte offset, source file buffer). Requiring the ambient handler to inspect this state forces either:
+   * Polluting the global effect signature with scanner-specific parameters (`report(msg, line, col, offset, file)`).
+   * Complex bidirectional delimited continuations where the handler must request state back from the caller.
+
+To cleanly model this, Bourbon establishes distinct and complementary roles for `extends` and `satisfies` when defining extensions:
+
+* **`extends Target`** identifies the base type, ambient capability, or object being augmented.
+* **`satisfies NewInterface`** comes into play when the extension declares that the augmented target now fulfills a contract it did not originally satisfy (retroactive conformance).
+* When augmenting a target's surface area with local helper methods without asserting a new contract, `satisfies` is simply omitted (`object extends Target with { ... }`).
+* When proving that an existing target fulfills a new interface, both appear together: `object extends Target satisfies NewInterface with { ... }`.
+
+== Proposed Design
+
+We propose a unified, header-first grammar for **Contextual Extensions, Reusable Mixins, and Retroactive Conformance** using the `extends ... [satisfies ...] with ...` syntax.
+
+This proposal provides:
+
+1. **Anonymous Scoped Augmentations**: Locally enrich an existing type or ambient capability with helper methods that close over the enclosing lexical scope.
+2. **Retroactive Interface Conformance**: Adapt an existing type or capability $T$ to satisfy a new contract $I$ within a lexical scope without wrapper allocations ($T + \Delta \implies T \text{ satisfies } I$).
+3. **Reusable Mixin Classes**: Package modular extension behaviors that can be instantiated and applied across multiple classes, services, or handler blocks.
+4. **Ambient Capability Promotion**: Extend ambient effect surfaces directly, allowing domain-specific calls against either the base capability or the promoted interface.
+
+---
+
+== 1. The Grammar Hierarchy
+
+All extension and mixin declarations follow a header-first structure. When providing an inline body, the syntax directly matches Ceylon's standard object declaration grammar (`object [Name] extends Target [satisfies I] { ... }`). When applying an external, parameterized mixin, the `with` keyword connects the target header to the mixin invocation:
+
+[source,ebnf]
+----
+ExtensionDeclaration ::= ( "class" | "object" ) [ Identifier ]? 
+                         "extends" TargetType 
+                         [ "satisfies" ContractInterface ]? 
+                         ( InlineBody | WithClause )
+
+WithClause           ::= "with" ( MixinInvocation | InlineBody )
+InlineBody           ::= "{" MemberDeclarations "}"
+MixinInvocation      ::= MixinType "(" [ ArgumentList ]? ")" [ "{" MemberDeclarations "}" ]?
+----
+
+=== Pure Ceylonic Syntax vs. Parameterized Mixins
+
+1. **Pure Ceylonic Inline Extensions (No `with` Required)**:
+   In standard Ceylon, class and object declarations place the body block `{ ... }` directly after the `extends` and `satisfies` clauses. For inline augmentations, Bourbon preserves this exact syntax:
++
+[source,bourbon]
+----
+// Pure Ceylonic anonymous extension:
+object extends DiagnosticReporter {
+    shared void errorAtCurrent(String message) { ... }
+}
+
+// Pure Ceylonic retroactive interface conformance:
+object extends DiagnosticReporter satisfies ErrorEmitter {
+    shared actual void emitError(String message) { ... }
+}
+----
++
+`with { ... }` is also accepted for visual symmetry with effect handlers (`handle ... with`), but is syntactically optional when an inline block is supplied.
+
+2. **Parameterized Reusable Mixins (`with Mixin(...)`)**:
+   In Ceylon, classes could inherit from only one class with arguments (`extends Super(args)`), while interfaces (`satisfies I`) could never accept arguments or declare constructors. This forced developers into boilerplate formal properties for configurable mixins.
+   Bourbon's `with Mixin(args)` resolves this historical limitation: it provides a dedicated syntax for applying **instantiated, parameterized mixins** directly onto a target.
+
+[cols="1,2,2", options="header"]
+|===
+| Operational Mode | Pure Ceylonic Syntax | Parameterized Mixin Syntax
+
+| **Anonymous Scoped Augmentation**
+| `object extends T { ... }`
+| `object extends T with M(...)`
+
+| **Retroactive Conformance**
+| `object extends T satisfies I { ... }`
+| `object extends T satisfies I with M(...)`
+
+| **Reusable Mixin Definition**
+| `class M(...) extends T [satisfies I] { ... }`
+| `class M(...) extends T [satisfies I] with { ... }`
+
+| **Named Mixin Application**
+| `object Name extends T satisfies I { ... }`
+| `object Name extends T satisfies I with M(...)`
+|===
+
+=== Anonymous Extension Objects vs. Reusable Mixin Instantiations
+
+It is crucial to understand the semantic distinction between what provides the implementation in an extension:
+
+1. **Inline Anonymous Extension Object (`{ ... }` or `with { ... }`)**:
+   When the header is followed directly by an inline block `{ ... }`, the compiler defines an **ad-hoc anonymous extension object** directly in place.
+   * No separate reusable `class` exists elsewhere; all member methods and properties are declared inline for that specific lexical scope.
+   * This is ideal for one-off contextual adaptations (e.g. `Scanner` extending `DiagnosticReporter` to close over `line` and `column`).
+   * It is directly analogous to an anonymous class / object literal in Ceylon and Java.
+
+2. **Reusable Mixin Instantiation (`with MixinType(args)`)**:
+   When `with` is followed by a mixin invocation (`with GitHubClientMixin(token)`), it **instantiates an existing, reusable mixin class** that was defined elsewhere (`class GitHubClientMixin(...) extends Http satisfies GitHubClient with { ... }`).
+   * The logic is packaged once in a library or module and can be reused across many call sites.
+   * Constructor parameters pass runtime configuration to the mixin instance.
+
+3. **Combined Instantiation with Local Refinements (`with MixinType(args) { ... }`)**:
+   A reusable mixin can be instantiated while also supplying a trailing `{ ... }` block to refine or override specific methods of the mixin on the fly.
+
+---
+
+== 2. Operational Modes & Concrete Examples
+
+=== Mode 1: Anonymous Scoped Augmentation (Closing Over Lexical State)
+
+Used when adding local, context-aware operations that capture enclosing instance state without claiming conformance to an external contract.
+
+[source,bourbon]
+----
+class Scanner(Source source) {
+    variable Integer line = 1;
+    variable Integer column = 1;
+    variable Integer offset = 0;
+
+    // Pure scoped augmentation over ambient DiagnosticReporter
+    object extends DiagnosticReporter with {
+        shared void errorAtCurrent(String message) {
+            report(Diagnostic(message, source.locationAt(line, column, offset)));
+        }
+
+        shared void unexpected(Character ch) {
+            errorAtCurrent("Unexpected character '``ch``'");
+        }
+    }
+
+    shared Token nextToken() performs DiagnosticReporter {
+        value ch = source.advance();
+        if (ch == '@') {
+            // Invokes the scoped extension method directly on the ambient capability
+            DiagnosticReporter.unexpected(ch);
+            return Token.error;
+        }
+        return Token.identifier;
+    }
+}
+----
+
+==== Key Advantages:
+* **Direct Access to Local State**: The extension closes over `line`, `column`, `offset`, and `source` directly.
+* **Zero Protocol Bloat**: `DiagnosticReporter`'s global contract remains minimal (`report(Diagnostic)`). The caller enriches the outgoing diagnostic before delegating upward.
+
+---
+
+=== Mode 2: Retroactive Interface Conformance (Capability Adaptation)
+
+Used when extending an existing contract with the implementation of another interface, allowing an existing object or capability to satisfy a contract it did not originally implement:
+
+$$\text{Target Instance / Capability } T + \text{Extension } \Delta \implies T \text{ satisfies } I$$
+
+[source,bourbon]
+----
+interface ErrorEmitter {
+    shared formal void emitError(String message);
+}
+
+class Parser(Source source) {
+    variable Integer cursor = 0;
+
+    // DiagnosticReporter does not natively satisfy ErrorEmitter.
+    // By providing the translation body, we declare retroactive conformance:
+    object extends DiagnosticReporter satisfies ErrorEmitter with {
+        shared actual void emitError(String message) {
+            report(Diagnostic(message, source.locationAt(cursor)));
+        }
+    }
+
+    // Call site can now require and dispatch against ErrorEmitter directly
+    shared Statement parseStatement() performs ErrorEmitter {
+        if (peek() == Token.error) {
+            ErrorEmitter.emitError("Syntax error in statement");
+        }
+        // ...
+    }
+}
+----
+
+Within `Parser`, the compiler statically knows that `DiagnosticReporter` satisfies `ErrorEmitter`. Any downstream function requiring `performs ErrorEmitter` can be satisfied by the ambient `DiagnosticReporter`.
+
+---
+
+=== Mode 3: Reusable Mixins & DRY Composition
+
+When extension logic is reusable across multiple services or passes, it is declared as a reusable mixin class and applied where needed.
+
+==== Mixin Definition
+[source,bourbon]
+----
+// Reusable mixin that extends Http to satisfy GitHubClient
+class GitHubClientMixin(String token, String baseUrl = "https://api.github.com")
+    extends Http
+    satisfies GitHubClient
+    with {
+
+    Map<String, String> authHeaders => map {
+        "Authorization" -> "Bearer ``token``"
+    };
+
+    shared actual User getUser(String username) {
+        value res = get("``baseUrl``/users/``username``", authHeaders);
+        return parseUser(res.body);
+    }
+
+    shared actual List<Repository> listRepos(String username) {
+        value res = get("``baseUrl``/users/``username``/repos", authHeaders);
+        return parseRepos(res.body);
+    }
+}
+----
+
+==== Mixin Application in Services
+[source,bourbon]
+----
+class GitHubSyncService(String token) {
+    // Activates the mixin for the lifetime and scope of this service
+    object extends Http satisfies GitHubClient with GitHubClientMixin(token);
+
+    shared void sync(String username) performs GitHubClient {
+        // Dispatches against the promoted domain contract:
+        value user = GitHubClient.getUser(username);
+        print("Fetched user: ``user.name``");
+    }
+}
+----
+
+---
+
+== 3. Self-References & Base Delegation (`this`, `super`, `outer`)
+
+A critical design consideration for mixins and extensions is how members of the base target and the enclosing environment are accessed. Following Ceylon's minimalist keyword principles, Bourbon avoids adding artificial keywords like `base` or `target`. Because the declaration syntax is `extends Target`, Ceylon's established self-reference keywords (`this`, `super`, and `outer`) cleanly satisfy every access requirement:
+
+=== 1. Accessing Base Members: `this` and Unqualified Access
+Because the mixin or extension explicitly declares `extends Target`, within its body it **is a subtype of `Target`**. The compiler types `this` as the intersection:
+
+$$\text{this} : T_{\text{Mixin}} \ \& \ T_{\text{Target}}$$
+
+All methods and attributes of `Target` are available directly in scope or via `this.`:
+
+[source,bourbon]
+----
+class GitHubClientMixin(String token) extends Http satisfies GitHubClient with {
+    shared actual User getUser(String username) {
+        // Unqualified call to Http.get:
+        value res = get("/users/``username``", authHeaders);
+
+        // Or explicit self-reference:
+        value res2 = this.get("/users/``username``", authHeaders);
+
+        return parseUser(res.body);
+    }
+}
+----
+
+=== 2. Calling the Base Implementation: `super`
+When a mixin overrides or wraps an existing method on `Target`, it uses **`super`** to delegate to the underlying implementation:
+
+[source,bourbon]
+----
+class LoggingHttpMixin() extends Http with {
+    // Overrides a method from the base Http capability
+    shared actual Response get(String url, Map<String, String> headers) {
+        print("GET request to ``url``");
+        
+        // Dispatches to the underlying Target (Http) implementation:
+        return super.get(url, headers);
+    }
+}
+----
+
+If multiple mixed-in interfaces introduce ambiguity, Ceylon's existing type-qualification syntax applies naturally:
+[source,bourbon]
+----
+(super of Http).get(url, headers);
+----
+
+=== 3. Accessing Enclosing Context in Scoped Extensions: `outer`
+In anonymous scoped extensions declared inside classes (such as `Scanner`), two scopes exist:
+* The **extension object itself** (representing the augmented capability).
+* The **enclosing class instance** whose state is being captured.
+
+Ceylon's `outer` keyword provides explicit access when extension members shadow enclosing members:
+
+[source,bourbon]
+----
+class Scanner(Source source) {
+    variable Integer line = 1;
+
+    object extends DiagnosticReporter {
+        shared void errorAtCurrent(String message) {
+            // 'this' refers to the DiagnosticReporter extension:
+            this.report(Diagnostic(message, source.locationAt(outer.line)));
+
+            // Unqualified access also resolves enclosing state directly:
+            report(Diagnostic(message, source.locationAt(line)));
+        }
+    }
+}
+----
+
+==== Summary of Reference Keywords
+[cols="1,1,2", options="header"]
+|===
+| Keyword | Target Reference | Purpose
+
+| **`this`** (or unqualified)
+| Extension + Target ($T \ \& \ M$)
+| Accessing any member of either the mixin or the extended base capability.
+
+| **`super`**
+| Base Target ($T$)
+| Invoking the underlying implementation of an overridden member.
+
+| **`outer`**
+| Enclosing Host Instance
+| Accessing private state of the outer lexical class from an anonymous scoped extension.
+|===
+
+---
+
+== 4. Dual Dispatch & Surface Promotion
+
+A key ergonomic breakthrough of this model is **Dual Dispatch**. When a capability is extended:
+
+```bourbon
+object extends Http satisfies GitHubClient with GitHubClientMixin(token);
+```
+
+Within that lexical scope, two dispatch styles are equally valid and statically resolved:
+
+1. **Domain Contract Style (`GitHubClient.getUser(...)`)**:
+   Enables complete domain abstraction. The calling code expresses its requirement in high-level business capabilities (`performs GitHubClient`).
+2. **Direct Ambient Extension Style (`Http.getUser(...)`)**:
+   Because the mixin attached `getUser` directly onto `Http` for that scope, developers can invoke `Http.getUser(...)` directly without inventing intermediate domain namespaces for simple convenience helpers.
+
+Because Bourbon infers effects by default (opt-in purity), the compiler observes calls to `Http.getUser` and automatically infers that the enclosing function performs `Http`.
+
+---
+
+== 5. Integration with Effect Handlers (Runtime Promotion)
+
+Contextual mixins integrate directly into Bourbon's algebraic effect handlers (`handle ... with`), allowing callers to adapt low-level runtime capabilities into domain capabilities at the application boundary:
+
+[source,bourbon]
+----
+// Pure domain logic: completely unaware that Http or network transport exists
+shared void syncUser(String username) performs GitHubClient {
+    value user = GitHubClient.getUser(username);
+    print("User ``user.name`` has ``GitHubClient.listRepos(username).size`` repos");
+}
+
+// Production Application Boundary:
+shared void main() performs Http {
+    handle {
+        syncUser("octocat");
+    } with {
+        // Promotes the ambient Http runtime capability to fulfill GitHubClient
+        object extends Http satisfies GitHubClient with GitHubClientMixin(config.token);
+    }
+}
+
+// Unit Test Boundary (Zero Network / Pure Test Double):
+shared void testSyncUser() {
+    handle {
+        syncUser("octocat");
+    } with {
+        GitHubClient.getUser(username) => User("octocat", "The Octocat"),
+        GitHubClient.listRepos(username) => [Repository("bourbon-lang")]
+    };
+}
+----
+
+---
+
+== 6. Static Semantics & Compiler Implications
+
+=== Set-Theoretic Type Algebra Integration
+At the static type level, extending a target $T$ with a mixin or interface $M$ promotes the expression's static type to the **intersection type**:
+
+$$T_{\text{result}} = T \ \& \ M$$
+
+Under Bourbon's set-theoretic type algebra:
+* All operations of $T$ and all operations of $M$ are simultaneously available without runtime casting or type narrowing.
+* The subtyping rule $T \ \& \ M \le T$ and $T \ \& \ M \le M$ holds unconditionally.
+
+=== Scope Invalidation & The "Semantic Firewall"
+Unlike Ruby monkey-patching or Kotlin open extension scopes, Bourbon extensions are **lexically bounded**:
+1. An `object extends Target with ...` declaration does not mutate `Target` in the global symbol index.
+2. It is recorded in the local lexical environment (`Environment.current()`).
+3. Changes to an extension body inside a class or function do **not cascade** to other classes or files.
+4. This preserves Bourbon's **Semantic Firewall**: incremental compilation and LSP rechecking remain strictly localized to the enclosing declaration.
+
+=== Language Server Protocol (LSP) Ergonomics
+Because extensions are resolved through the lexical scope chain:
+* **Context-Aware Completion**: Typing `Target.` at any AST offset synthesizes the union of $T$'s base members and any extensions currently active in that lexical scope.
+* **Hover & Go-to-Definition**: The LSP can jump directly to the mixin or inline extension block where a contextual method was introduced, showing the exact lexical state it closes over.
+
+---
+
+== 7. Execution Runtime Model
+
+1. **Zero Intermediate Allocation**: In both the Truffle interpreter and future native backends, lexical extensions avoid allocating wrapper decorator objects.
+2. **Truffle Bootstrap**: Dispatches via dynamic object shapes or specialized polymorphic inline caches (`@Specialization`).
+3. **Native Backend (LLVM / Zig)**: Compiles to static dispatch tables or fat pointer pairs (`{ void* receiver, VTable* baseTable, VTable* mixinTable }`).

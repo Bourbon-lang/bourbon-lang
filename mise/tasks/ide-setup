@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Configure .bazelproject.user with the local mise Java path for IntelliJ"
+
+JAVA_PATH="$(mise where java)"
+
+cat << EOF > .bazelproject.user
+ide_java_home_override: ${JAVA_PATH}
+java_language_level: 25
+EOF
+
+echo "Configured .bazelproject.user with ide_java_home_override: ${JAVA_PATH}"

@@ -4,6 +4,7 @@
   "private": true,
   "devDependencies": {
     "@antora/cli": "^3.1.9",
-    "@antora/site-generator": "^3.1.9"
+    "@antora/site-generator": "^3.1.9",
+    "asciidoctor-kroki": "0.18.1"
   }
 }

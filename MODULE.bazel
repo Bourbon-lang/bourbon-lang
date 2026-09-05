@@ -28,7 +28,12 @@ gvm.graalvm(
 use_repo(gvm, "graalvm")
 
 # Register JVM and SDK toolchains
-register_toolchains("@graalvm//:jvm", "@graalvm//:sdk")
+register_toolchains(
+    "//:graalvm_toolchain_25_definition",
+    "@graalvm//:jvm",
+    "@graalvm//:sdk",
+    "@graalvm//:bootstrap_runtime_toolchain",
+)
 
 git_override(
     module_name = "rules_graalvm",

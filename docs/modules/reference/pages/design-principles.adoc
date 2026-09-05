@@ -89,8 +89,8 @@ When contributing to the bootstrap compiler, developers must use full words for 
 |===
 | Disallowed Abbreviated Name | Required Complete Name
 
-| `DiagnosticReporter diagRep`
-| `DiagnosticReporter diagnosticReporter`
+| `Diagnostic.Handler diagHandler`
+| `Diagnostic.Handler diagnosticHandler`
 
 | `SourceSpan srcSpan`
 | `SourceSpan sourceSpan`

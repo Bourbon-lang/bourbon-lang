@@ -3,7 +3,6 @@ package org.bourbon.compiler;
 import java.util.List;
 import java.util.Optional;
 
-import org.jspecify.annotations.Nullable;
 import org.bourbon.compiler.util.Lists;
 
 /**
@@ -12,7 +11,7 @@ import org.bourbon.compiler.util.Lists;
  */
 public record Label(
     SourceSpan span,
-    @Nullable String message,
+    String message,
     boolean isPrimary
 ) {
 

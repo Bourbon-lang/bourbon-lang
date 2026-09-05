@@ -3,8 +3,7 @@ package org.bourbon.compiler;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.xml.xpath.XPathExpressionException;
-
+import org.bourbon.compiler.diagnostic.Diagnostic;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.TestInstantiationException;
 
@@ -176,17 +175,12 @@ class ScannerTestCaseParser {
     }
 
     private record ScannerParserReporter(Source source) {
-        private Diagnostic report(Diagnostic diagnostic) {
-            DiagnosticReporter.report(diagnostic);
-            return diagnostic;
-        }
-
         private TestInstantiationException error(Diagnostic diagnostic) {
-            return TestInitiaitionErrors.toException(report(diagnostic));
+            return TestInitiaitionErrors.toException(diagnostic);
         }
 
         private TestInstantiationException error(String message, Label label) {
-            return error(Diagnostic.error(Diagnostic.Code.ScannerTestCaseParserError, message, List.of(label)));
+            return error(Diagnostic.error(TestCaseError.TestCaseParserError, message, List.of(label)));
         }
 
         TestInstantiationException expectLineSeparator() {

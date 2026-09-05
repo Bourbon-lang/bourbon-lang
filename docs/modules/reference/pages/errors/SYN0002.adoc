@@ -1,0 +1,83 @@
+= SYN0002: Unbalanced Multiline Comment
+:navtitle: SYN0002
+:description: Diagnostic documentation for SYN0002: Unbalanced Multiline Comment.
+
+A multi-line block comment was opened but was not closed before reaching the end of the file.
+
+`SYN0002` occurs when the Bourbon lexer encounters an opening `/*` delimiter whose nesting depth is not balanced by a matching `*/` closing delimiter before the source stream terminates.
+
+== Erroneous Code Example
+
+In the following example, an inner nested comment is opened on line 3, but only one closing delimiter `*/` is provided on line 5:
+
+[source,bourbon]
+----
+/* Outer comment starts here
+   /* Nested comment starts here
+      Some commented text
+*/
+fn main() {}
+----
+
+Compiling this code triggers `SYN0002`:
+
+[source,text]
+----
+error[SYN0002]: Unbalanced multiline comment
+  --> src/main.bourbon:1:1
+    |
+  1 | /* Outer comment starts here
+    | ^^ Multi-line comment starts here
+  6 | fn main() {}
+    |             ^ Still no end of comment
+----
+
+== Explanation
+
+Bourbon supports **nesting block comments**.
+Unlike languages like C and Java—where the first `*/` immediately terminates the entire comment regardless of how many `/*` delimiters preceded it—Bourbon tracks comment nesting depth:
+
+* Every opening `/*` increases the comment nesting depth by one.
+* Every closing `*/` decreases the comment nesting depth by one.
+* A comment is only considered fully closed when the nesting depth returns to zero.
+
+If the compiler reaches the end of the source file (EOF) while the comment depth remains greater than zero, the rest of the source file is swallowed as comment text, and `SYN0002` is reported.
+
+== How to Fix
+
+=== 1. Add the Missing Closing Delimiter
+Ensure that every opening `/*` has a matching closing `*/` delimiter:
+
+[source,bourbon]
+----
+/* Outer comment starts here
+   /* Nested comment starts here
+      Some commented text
+   */
+*/
+fn main() {
+    // Valid: Both outer and inner comments are closed
+}
+----
+
+=== 2. Check for Accidental Opening Sequences
+Verify that an accidental `/*` was not entered inside explanatory notes, ASCII art, or glob patterns:
+
+[source,bourbon]
+----
+// Incorrect: Accidental opening comment inside a block comment
+/* Please refer to path/to/* files */
+
+// Correct: Separate with whitespace or use single-line comments
+/* Please refer to path/to/ * files */
+// Please refer to path/to/* files
+----
+
+=== 3. Use Line Comments for Disabling Code
+When commenting out large blocks of code that may already contain block comments, consider using line comments (`//`) instead to avoid delimiter mismatches.
+
+== See Also
+
+* xref:lexical-structure.adoc[Lexical Structure (Comments)]
+* xref:errors/SYN0001.adoc[SYN0001: Unexpected Character]
+* xref:errors/index.adoc[Error Code Catalog]

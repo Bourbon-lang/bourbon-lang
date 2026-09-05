@@ -1,7 +1,6 @@
 package org.bourbon.compiler.effects;
 
 import java.util.concurrent.Callable;
-import java.util.function.Supplier;
 
 /// Lightweight effect system emulation layer for the compiler pipeline implementation.
 ///

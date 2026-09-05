@@ -60,11 +60,13 @@ import static org.bourbon.compiler.TokenType.TRIPLE_EQUAL;
 import java.util.List;
 import java.util.Map;
 
+import org.bourbon.compiler.diagnostic.Diagnostic;
 import org.bourbon.compiler.literal.NumberLiteral;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.TestInstantiationException;
 
 public class TestCaseTokenParser {
+
     private static final Map<TokenType, String> DEFAULT_LEXEMES = Map.<TokenType, String>ofEntries(
             entry(LEFT_BRACE, "{"),
             entry(RIGHT_BRACE, "}"),
@@ -205,14 +207,17 @@ public class TestCaseTokenParser {
 
     private void consumeAtCharacter() {
         char c = requireNotEnd(skipWhitespace());
-        if (c != '@') throw Report.expectedAtSymbol();
+        if (c != '@')
+            throw Report.expectedAtSymbol();
         source.tokenStart();
     }
 
     private int consumeNumber(String numberRole) {
         char c = requireNotEnd(skipWhitespace());
-        if  (!isDigit(c)) throw Report.numericValueExpected(numberRole);
-        while (!isAtEnd() && isDigit(source.peek())) source.advance();
+        if (!isDigit(c))
+            throw Report.numericValueExpected(numberRole);
+        while (!isAtEnd() && isDigit(source.peek()))
+            source.advance();
         String lexeme = source.lexeme();
         source.tokenStart();
         return Integer.parseInt(lexeme);
@@ -224,8 +229,10 @@ public class TestCaseTokenParser {
 
     private @Nullable Object consumeLiteral(TokenType type) {
         String lexeme = consumeLexeme();
-        if (lexeme == null) return null;
-        if (lexeme.isBlank()) return null;
+        if (lexeme == null)
+            return null;
+        if (lexeme.isBlank())
+            return null;
 
         if (lexeme.startsWith("\"") && lexeme.endsWith("\"")) {
             lexeme = lexeme.substring(1, lexeme.length() - 1);
@@ -247,8 +254,10 @@ public class TestCaseTokenParser {
     private @Nullable String consumeLexeme() {
         char c = requireNotEnd(skipWhitespace());
 
-        if (c == '\'' || c == '"') return consumeString(c);
-        if (c == '\\') return consumeEscapeChar();
+        if (c == '\'' || c == '"')
+            return consumeString(c);
+        if (c == '\\')
+            return consumeEscapeChar();
         if (c == '@') {
             source.tokenReset();
             return null;
@@ -275,11 +284,13 @@ public class TestCaseTokenParser {
         }
 
         if (!Character.isJavaIdentifierStart(c)) {
-            while (!isAtEnd() && !isWhitespace()) source.advance();
+            while (!isAtEnd() && !isWhitespace())
+                source.advance();
             throw Report.tokenNameExpected();
         }
 
-        while (!isAtEnd() && Character.isJavaIdentifierPart(source.peek())) source.advance();
+        while (!isAtEnd() && Character.isJavaIdentifierPart(source.peek()))
+            source.advance();
         try {
             TokenType tokenType = TokenType.valueOf(source.lexeme());
             source.tokenStart();
@@ -300,7 +311,8 @@ public class TestCaseTokenParser {
     }
 
     private char skipWhitespace() {
-        while (!isAtEnd() && isWhitespace()) source.advance();
+        while (!isAtEnd() && isWhitespace())
+            source.advance();
         source.tokenStart();
         return source.advance();
     }
@@ -353,8 +365,10 @@ public class TestCaseTokenParser {
     }
 
     private char readEscapeChar() {
-        if (source.isAtEnd()) throw new IllegalStateException("Unexpected end of input");
-        if (source.peek() == '\n') throw new IllegalStateException("Unexpected newline");
+        if (source.isAtEnd())
+            throw new IllegalStateException("Unexpected end of input");
+        if (source.peek() == '\n')
+            throw new IllegalStateException("Unexpected newline");
         char c = source.advance();
         return switch (c) {
             case '0' -> '\0'; // Null character
@@ -369,65 +383,59 @@ public class TestCaseTokenParser {
 
     private record TokenDiagnosticReporter(Source source) {
 
-        private Diagnostic report(Diagnostic diagnostic) {
-                DiagnosticReporter.report(diagnostic);
-                return diagnostic;
-            }
+        TestInstantiationException error(String message, List<Label> labels) {
+            var error = Diagnostic.error(TestCaseError.TestCaseParserError, message, labels);
+            return TestInitiaitionErrors.toException(error);
+        }
 
-            TestInstantiationException error(String message, List<Label> labels) {
-                var error = report(Diagnostic.error(Diagnostic.Code.ScannerTestCaseParserError, message, labels));
-                return TestInitiaitionErrors.toException(error);
-            }
+        TestInstantiationException unexpectedEndOfLine() {
+            return error("Failed to parse " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Unexpected end of line")));
+        }
 
-            TestInstantiationException unexpectedEndOfLine() {
-                return error("Failed to parse " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Unexpected end of line")));
-            }
+        TestInstantiationException unexpectedEndOfInput() {
+            return error("Failed to parse " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Unexpected end of input")));
+        }
 
-            TestInstantiationException unexpectedEndOfInput() {
-                return error("Failed to parse " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Unexpected end of input")));
-            }
+        TestInstantiationException unrecognizedToken() {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Unrecognized token: " + source.lexeme())));
+        }
 
-            TestInstantiationException unrecognizedToken() {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Unrecognized token: " + source.lexeme())));
-            }
+        TestInstantiationException tokenNameExpected() {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Token name expected!")));
+        }
 
-            TestInstantiationException tokenNameExpected() {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Token name expected!")));
-            }
+        TestInstantiationException lexemeExpected(TokenType type) {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Expected lexeme for token type " + type)));
+        }
 
-            TestInstantiationException lexemeExpected(TokenType type) {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Expected lexeme for token type " + type)));
-            }
+        TestInstantiationException numericValueExpected(String numberRole) {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Expected token " + numberRole)));
+        }
 
-            TestInstantiationException numericValueExpected(String numberRole) {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Expected token " + numberRole)));
-            }
+        TestInstantiationException expectedAtSymbol() {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Expected '@' separator before column number")));
+        }
 
-            TestInstantiationException expectedAtSymbol() {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Expected '@' separator before column number")));
-            }
+        TestInstantiationException expectedSpanRangeStart() {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Expected source span range starting with '[' or end of line")));
+        }
 
-            TestInstantiationException expectedSpanRangeStart() {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Expected source span range starting with '[' or end of line")));
-            }
+        TestInstantiationException expectedSpanRangeSeparator() {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Expected '..' as span range separator")));
+        }
 
-            TestInstantiationException expectedSpanRangeSeparator() {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Expected '..' as span range separator")));
-            }
-
-            TestInstantiationException expectedSpanRangeEnd() {
-                return error("Failed to parse token in " + source.name(), List.of(
-                        Label.primaryOf(source.currentSpan(), "Expected closing bracket ']' to complete the source range")));
-            }
-
+        TestInstantiationException expectedSpanRangeEnd() {
+            return error("Failed to parse token in " + source.name(), List.of(
+                    Label.primaryOf(source.currentSpan(), "Expected closing bracket ']' to complete the source range")));
+        }
     }
 }

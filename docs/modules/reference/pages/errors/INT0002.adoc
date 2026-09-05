@@ -1,0 +1,47 @@
+= INT0002: File Not Found
+:navtitle: INT0002
+:description: Diagnostic documentation for INT0002: File Not Found.
+
+The compiler attempted to open a source file or configuration resource, but it could not be located on the filesystem.
+
+`INT0002` occurs when a path supplied to the compiler via CLI arguments, build configurations, or module imports does not point to an existing, accessible file.
+
+== Common Causes
+
+1. **Typo in the File Path**:
+A misspelled filename or incorrect relative path provided to `bourbon run` or `bourbon compile`:
++
+[source,bash]
+----
+# Error: File 'mian.bourbon' does not exist
+bourbon run src/mian.bourbon
+----
+
+2. **Incorrect Working Directory**:
+Running the compiler from a different directory than expected, causing relative paths to fail resolution.
+
+3. **Case Sensitivity Mismatch**:
+Filenames on Linux filesystems are strictly case-sensitive, whereas macOS and Windows filesystems may be case-insensitive.
+A file named `Main.bourbon` referenced as `main.bourbon` will trigger `INT0002` on Linux or CI environments.
+
+== How to Fix
+
+1. **Verify the Path**:
+Check that the target file exists at the specified location:
++
+[source,bash]
+----
+ls -la <path-to-file>
+----
+
+2. **Check Current Working Directory**:
+Ensure your shell's current working directory matches the root from which relative paths are calculated.
+
+3. **Verify File Permissions**:
+Ensure the user running the compiler has read permissions for the file and execute/traverse permissions for all parent directories.
+
+== See Also
+
+* xref:errors/index.adoc[Error Code Catalog]
+* xref:errors/INT0000.adoc[INT0000: Internal Compiler Bug]
+* xref:errors/INT0001.adoc[INT0001: I/O Error]

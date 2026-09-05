@@ -1,3 +1,14 @@
+load("@rules_java//toolchains:default_java_toolchain.bzl", "default_java_toolchain")
+
+default_java_toolchain(
+    name = "graalvm_toolchain_25",
+    configuration = dict(),
+    java_runtime = "@graalvm//:jdk",
+    source_version = "25",
+    target_version = "25",
+    visibility = ["//visibility:public"],
+)
+
 exports_files([
     "antora-playbook.yml",
     "package.json",

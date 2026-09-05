@@ -1,0 +1,117 @@
+= SYN0003: Numeric Literal Error
+:navtitle: SYN0003
+:description: Diagnostic documentation for SYN0003: Numeric Literal Error.
+
+A numeric literal value is malformed or violates Bourbon's numeric formatting rules.
+
+`SYN0003` occurs when the Bourbon lexer encounters a number token whose base prefix, digit characters, underscore placement, or exponent notation does not conform to the lexical specification.
+
+== Erroneous Code Examples
+
+=== 1. Misplaced Underscore Separators
+Underscores cannot appear at the end of a number, consecutively, or adjacent to a decimal point:
+
+[source,bourbon]
+----
+let a = 123_;    // Error: Trailing underscore
+let b = 1__000;  // Error: Consecutive double underscore
+let c = 1_.5;    // Error: Underscore immediately before decimal point
+----
+
+Compiling this triggers `SYN0003`:
+
+[source,text]
+----
+error[SYN0003]: Underscore is not allowed at the end of a decimal literal
+  --> src/main.bourbon:1:9
+    |
+  1 | let a = 123_;
+    |         ^^^^ Invalid decimal literal!
+    |            ^ Invalid trailing underscore
+----
+
+=== 2. Invalid Base Digits
+Binary literals use the `$` prefix and accept only `0` and `1`.
+Hexadecimal literals use the `#` prefix and accept only `0`–`9` and `a`–`f`:
+
+[source,bourbon]
+----
+let bin = $1020;  // Error: '2' is not a valid binary digit
+let hex = #12g4;  // Error: 'g' is not a valid hexadecimal digit
+----
+
+=== 3. Missing Exponent Sign
+Bourbon requires an explicit `+` or `-` sign in scientific notation:
+
+[source,bourbon]
+----
+let speed = 1e8;  // Error: Missing exponent sign (use 1e+8)
+----
+
+[source,text]
+----
+error[SYN0003]: Missing sign in decimal exponent
+  --> src/main.bourbon:1:13
+    |
+  1 | let speed = 1e8;
+    |             ^^^ Invalid decimal literal!
+    |              ^^ Malformed exponent
+    |               ^ Missing exponent sign
+----
+
+=== 4. Multiple Decimal Points
+[source,bourbon]
+----
+let version = 1.2.3;  // Error: Multiple decimal points
+----
+
+== Explanation
+
+Bourbon provides rich numeric literal support designed for clarity and domain readability:
+
+* **Base Prefixes**:
+** Binary numbers begin with `$` (e.g. `$1010_0101`).
+** Hexadecimal numbers begin with `#` (e.g. `#ff_00_ea`).
+** Decimal numbers begin with standard digits `0`–`9`.
+* **Digit Separators (`_`)**:
+Underscores are permitted to enhance readability in large numbers (e.g. `1_000_000`).
+However, underscores must always sit strictly **between two valid digits**.
+They cannot lead a literal (`$_01`), trail a literal (`10_`), appear consecutively (`1__0`), or sit adjacent to a decimal point (`1_.5`).
+* **SI Magnitude Suffixes**:
+Bourbon allows standard SI metric multipliers (`k`, `M`, `G`, `T`, `P` for thousands to peta; `m`, `u`, `n`, `p`, `f` for milli to femto), such as `1.5k` or `10.25u`.
+Magnitude suffixes cannot be chained (`1km` is invalid).
+* **Scientific Exponents**:
+Scientific exponents require both the base indicator (`e` or `E`) and an explicit sign (`+` or `-`), followed by one or more digits (e.g. `1.23e+10` or `1e-5`).
+
+== How to Fix
+
+=== Place Underscores Strictly Between Digits
+[source,bourbon]
+----
+// Valid underscore placement
+let a = 123;
+let b = 1_000;
+let c = 1.5;
+----
+
+=== Use Valid Base Digits
+[source,bourbon]
+----
+// Valid binary and hex
+let bin = $1010;
+let hex = #12f4;
+----
+
+=== Include the Sign in Exponents
+[source,bourbon]
+----
+// Valid scientific notation
+let speed = 1e+8;
+let small = 2.5e-3;
+----
+
+== See Also
+
+* xref:lexical-structure.adoc[Lexical Structure (Numeric Literals)]
+* xref:errors/SYN0001.adoc[SYN0001: Unexpected Character]
+* xref:errors/index.adoc[Error Code Catalog]

@@ -37,6 +37,12 @@ public class Source implements CharSequence {
         return name;
     }
 
+    public CharSequence line(int line) {
+        int startOffset = lineIndex.lineOffset(line);
+        int endOffset = lineIndex.lineOffset(line + 1);
+        return subSequence(startOffset, endOffset);
+    }
+
     @FunctionalInterface
     public interface CharPredicate {
         boolean test(char c);
@@ -237,7 +243,7 @@ public class Source implements CharSequence {
         return named("<stdin>").of(Content.read(System.in));
     }
 
-    static SourceName named(String name) {
+    public static SourceName named(String name) {
         return new SourceName(name);
     }
 

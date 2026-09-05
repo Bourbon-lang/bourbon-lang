@@ -1,0 +1,53 @@
+= INT0001: I/O Error
+:navtitle: INT0001
+:description: Diagnostic documentation for INT0001: General I/O Error.
+
+An unexpected input/output error occurred while accessing the host filesystem or operating system resources.
+
+`INT0001` is the general fallback diagnostic for host environment I/O failures.
+It occurs when the compiler attempts to read source files, write compiled artifacts, or access caches, but the operating system terminates the operation.
+
+== Common Causes
+
+1. **Permission Denied**:
+The user executing the compiler lacks read permissions for a source file, or write permissions for the output/build directory.
+
+2. **Disk Exhaustion**:
+The host volume ran out of free space or exhausted its inode quota while writing build artifacts.
+
+3. **File Lock or Process Contention**:
+Another process (such as an IDE indexer, background compiler daemon, or antivirus scanner) has locked the file exclusively.
+
+4. **Storage or Mount Failure**:
+A remote network drive (NFS, SMB) or removable storage volume disconnected or became unreadable during compilation.
+
+5. **Broken Pipe**:
+The compiler was piping output to another command (e.g. `bourbon run ... | head`) that closed its input stream prematurely.
+
+== How to Fix
+
+1. **Check Permissions**:
+Verify that your user account has read and write access to the project directory:
++
+[source,bash]
+----
+# Ensure read access for sources and write access for build artifacts
+ls -la path/to/source.bourbon
+----
+
+2. **Check Available Disk Space**:
+Ensure the target volume has adequate free space:
++
+[source,bash]
+----
+df -h .
+----
+
+3. **Check for Running Locks**:
+Verify that no background process or stale compiler daemon is holding a lock on the project files.
+
+== See Also
+
+* xref:errors/index.adoc[Error Code Catalog]
+* xref:errors/INT0000.adoc[INT0000: Internal Compiler Bug]
+* xref:errors/INT0002.adoc[INT0002: File Not Found]

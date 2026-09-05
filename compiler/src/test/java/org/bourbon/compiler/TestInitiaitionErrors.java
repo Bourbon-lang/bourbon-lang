@@ -3,6 +3,7 @@ package org.bourbon.compiler;
 
 import java.util.Arrays;
 
+import org.bourbon.compiler.diagnostic.Diagnostic;
 import org.junit.jupiter.api.extension.TestInstantiationException;
 
 /// Parser errors factory
@@ -16,12 +17,8 @@ public class TestInitiaitionErrors {
         var label = diagnostic.labels().stream().filter(Label::isPrimary).findFirst()
                 .orElseGet(diagnostic.labels()::getFirst);
 
-        var suggestion = diagnostic.suggestions().isEmpty() ? null : diagnostic.suggestions().getFirst();
         var message = "%s: %s on line %d, column %d".formatted(
                 diagnostic.message(), label.message(), label.span().line(), label.span().column());
-
-        if (suggestion != null)
-            message += "\nSuggestion: " + suggestion;
 
         var exception = new TestInstantiationException(message);
 

@@ -16,7 +16,7 @@ Unbalanced Multiline Comment
  /* Another nested comment. We should suggest closing it.
 */
 ---
-✗ error[BCE000101]: Unbalanced Multiline comment
+error[SYN0002]: Unbalanced multiline comment
   --> 01_comments.bourbon.txt:11:1
      |
   11 | /*

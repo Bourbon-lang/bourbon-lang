@@ -1,0 +1,10 @@
+==================
+Character literals
+==================
+// Single character literals
+'a'
+
+// Single character escape sequences
+'\b' '\t' '\n' '\f' '\r' '\e' '\\' '\"' '\'' \` '\0'
+
+//

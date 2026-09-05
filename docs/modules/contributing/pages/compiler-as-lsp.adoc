@@ -1,0 +1,147 @@
+= Compiler as Language Server (LSP Architecture)
+:navtitle: Compiler as Language Server
+
+This document outlines the architectural strategy for integrating the Language Server Protocol (LSP) directly into the Bourbon compiler toolchain, avoiding the complexity traps of heavyweight query engines while guaranteeing sub-50ms editor responsiveness.
+
+== 1. The Heritage & Vision: Single Source of Truth
+
+Historically, compilers and IDEs maintained completely separate frontends:
+* Compilers were batch processors (`source -> binary`) that failed fast on syntax errors and discarded formatting trivia.
+* IDEs (such as Eclipse and IntelliJ) wrote independent parsers, ASTs, and typecheckers for every supported language.
+
+=== The Lesson from Ceylon
+Bourbon's predecessor, Ceylon, was deeply committed to tooling ergonomics. Its typechecker was packaged as a reusable library to power IDE plugins. However, because Ceylon predated the Language Server Protocol (LSP), the team had to build and maintain **two massive, bespoke IDE plugins from scratch** (one for Eclipse, one for IntelliJ). This split the engineering momentum of the language.
+
+Attempting to generate IDE-specific parser DSLs (such as Eclipse Xtext or IntelliJ Grammar-Kit) also re-introduces the **"Double-Parser Problem"**: maintaining two distinct parsing engines that inevitably drift in recovery, precedence, and diagnostics (see detailed analysis in xref:compiler-pipeline-internals.adoc#_ide_integration_trade_offs_intellij_grammar_kit_eclipse_xtext[Compiler Internals: IDE Integration Trade-offs]).
+
+Bourbon solves this by adopting a **"Compiler as a Service"** model powered by LSP:
+1. **Single Frontend (`compiler-core`)**: The parser, type checker, set-theoretic solver, and effect inference engine serve both the batch CLI (`bourbon build`) and the language server (`bourbon lsp`).
+2. **Universal Editor Support**: A single, compiler-backed LSP implementation provides rich, identical IDE capabilities across VS Code, Zed, Neovim, Helix, and IntelliJ (via LSP4IJ/Fleet).
+3. **Zero Semantic Drift**: If code compiles on the CLI, the editor displays zero false-positive errors; if the editor suggests a completion or refactoring, it matches the exact semantics of the compiler backend.
+
+---
+
+== 2. Evaluating Compiler Architectures: Query-Based vs. Semantic Firewalls
+
+Modern compiler discussions often push for fine-grained, memoized query engines (such as Salsa in `rust-analyzer` or the Roslyn incremental pipeline). While elegant, a full query-engine model introduces significant drawbacks:
+* Massive architectural complexity (cache key invalidation, dynamic dependency tracking, cycle detection).
+* High memory overhead across long-running daemon lifecycles.
+* Inflexible purity constraints that ban simple, fast mutable scratchpads.
+
+[cols="1,2,2", options="header"]
+|===
+| Dimension | Fine-Grained Query Engine (Salsa / Roslyn) | Bourbon's Semantic Firewall Model
+
+| **Primary Mechanism**
+| Dynamic dependency graph tracking every AST node and sub-expression.
+| Coarse-grained signature fingerprinting + lexical scope environments.
+
+| **Memory Footprint**
+| High; caches intermediate query values for all expressions.
+| Minimal; retains parsed CST and outline signatures; caches function bodies on demand.
+
+| **When It's Needed**
+| Languages with whole-program type inference or heavy, unconstrained macros (Rust, Scala).
+| Unnecessary in Bourbon due to explicit top-level boundaries.
+
+| **Engineering Overhead**
+| Very high; steep learning curve for compiler contributors.
+| Low; straightforward recursive-descent passes with standard environment tables.
+|===
+
+=== Why Bourbon Does Not Need a Heavy Query Engine
+
+Bourbon's language design inherently establishes **Semantic Firewalls** that prevent changes from rippling across the codebase:
+
+1. **Explicit Top-Level Signatures**: All functions, methods, and types must declare their types and capability rows (`performs Database | Logger`). Type and effect inference are strictly confined within function bodies.
+2. **Local Invalidation**: When a developer types inside a function body, the change cannot alter the type or capabilities of any caller up the stack. The compiler re-checks only that single body.
+3. **Set-Theoretic Effect Inclusion**: Effect checking is deterministic set arithmetic ($E_{\text{performed}} \subseteq E_{\text{declared}}$). There is no complex backtracking or global constraint unification.
+4. **Lexically Scoped Extensions**: Contextual mixins and surface augmentations (`object extends Target with ...`) do not mutate global nominal types; they are registered in local lexical scopes.
+
+---
+
+== 3. Incremental Caching Architecture
+
+Instead of an all-encompassing query database, the Bourbon compiler uses a two-tier incremental model:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       Tier 1: Outline                       │
+│    Fast scan of declarations, signatures, and satisfied     │
+│       interfaces. Generates public ABI fingerprints.        │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+            Has public ABI fingerprint changed?
+           ┌───────────────────┴───────────────────┐
+           ▼                                       ▼
+        [ NO ]                                  [ YES ]
+  Invalidate ONLY changed                 Invalidate direct subtypes
+  function/method body.                   in Subtype Dependency Graph;
+  (< 5ms re-check)                        re-verify member tables.
+```
+
+=== 1. Outline & Signature Fingerprinting
+* When a file is modified, the compiler performs a fast Outline pass over top-level declaration headers (names, parameter types, return types, effect sets).
+* It hashes the public shape into an **ABI Fingerprint**.
+* If the fingerprint is identical (e.g., the user is only editing logic inside a function), **zero downstream files or classes are rechecked**.
+
+=== 2. The Subtype Dependency Graph (Handling Mixins)
+When an interface or mixin changes its public contract (e.g. adding an abstract method or a default implementation):
+* The compiler consults a lightweight in-memory `Map<InterfaceId, Set<ClassId>>`.
+* Only direct implementors and sub-interfaces are scheduled for member-set re-verification.
+* Diamond collisions are flagged deterministically without computing complex linearization graphs.
+
+=== 3. Lexical Scope Environments (Contextual Extensions)
+When resolving completions or diagnostics for contextual extensions (`object extends Target with ...`):
+* Extensions are stored in the local lexical symbol table (`Environment`).
+* Typing `Target.` at line $L$, column $C$ asks the environment for all members visible on `Target` at that scope coordinate.
+* The LSP synthesizes the member set on the fly ($\text{members}(T) \cup \text{members}(\text{Extension})$) without requiring global reindexing.
+
+---
+
+== 4. Non-Negotiable Compiler Frontend Invariants
+
+To keep the compiler robust as an LSP engine, contributors must follow four strict engineering rules:
+
+=== 1. Resilient, Fault-Tolerant Parsing
+* **Rule**: The parser must **never** throw unhandled exceptions or return a `null` AST on invalid syntax.
+* **Mechanism**: In the presence of syntax errors, the parser must emit a diagnostic fact via `@Effect Diagnostic.Handler`, synchronize to the next statement delimiter, insert synthetic placeholder tokens, and construct a valid CST.
+* **Why**: The editor is in a syntactically broken state 90% of the time while the user is typing.
+
+=== 2. Lossless Concrete Syntax Trees (CST)
+* **Rule**: The syntax tree must preserve all trivia (whitespace, comments, semicolons, invalid tokens).
+* **Mechanism**: Every byte offset in the source buffer maps directly to a node or token in the tree.
+* **Why**: Required for formatting (`bourbon fmt`), automated refactorings, semantic token highlighting, and exact hover ranges.
+
+=== 3. Immutability & Context-Bound Side-Tables
+* **Rule**: Never mutate AST/CST nodes to attach semantic results (such as resolved types or target declarations).
+* **Mechanism**: All semantic decisions are recorded in thread-safe, context-bound side-tables indexed by `NodeId`:
++
+[source,java]
+----
+Type exprType = compilationContext.getTypeOf(nodeId);
+Declaration target = compilationContext.getDeclarationOf(nodeId);
+----
+* **Why**: Allows concurrent read access by LSP requests (e.g. hover while diagnostics run) without data races or lock contention.
+
+=== 4. Decoupled Protocol Adapter
+* **Rule**: Keep `compiler-core` completely free of LSP types, JSON-RPC, or transport logic.
+* **Structure**:
+  * `compiler-core`: Parsing, CST, symbol resolution, type algebra, effect checking, diagnostics.
+  * `compiler-cli`: Batch command driver, native code emission.
+  * `compiler-lsp`: Thin JSON-RPC adapter translating LSP requests (`textDocument/completion`, `textDocument/hover`) into compiler context queries.
+
+---
+
+== 5. Summary Checklist for Feature Implementors
+
+When designing or implementing a new language feature in the compiler, verify:
+
+1. **Is the feature incrementally cacheable?**
+   * Does it introduce non-local type inference across declaration boundaries? (If yes, reconsider).
+2. **Can the parser recover gracefully if this feature's syntax is incomplete?**
+   * If a user types half of the construct, does the parser produce a usable tree for autocomplete?
+3. **Does the LSP have immediate access to the semantic model via `NodeId` side-tables?**
+   * Can hover, go-to-definition, and find-references resolve the construct with a single side-table lookup?
+4. **Is member synthesis deterministic?**
+   * For intersections (`A & B`) and contextual extensions, is member resolution a clean mathematical set union without order-dependent side-effects?

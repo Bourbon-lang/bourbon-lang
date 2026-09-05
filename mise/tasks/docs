@@ -1,5 +1,24 @@
 #!/usr/bin/env bash
-#MISE description="Build Antora documentation directly on the host"
+#MISE description="Build Antora documentation site using Bazel"
+#USAGE flag "-o --open" help="Open docs in default browser after build"
+#USAGE flag "-s --serve" help="Serve docs on a local HTTP server"
 
-npm install
-npx antora --fetch antora-playbook.yml
+set -euo pipefail
+
+bazel build //docs:site
+
+mkdir -p build/site
+tar -xzf bazel-bin/docs/site_archive.tar.gz -C build/site
+
+SITE_INDEX="$PWD/build/site/index.html"
+echo ""
+echo "Documentation built successfully!"
+echo "Browse locally: file://${SITE_INDEX}"
+echo ""
+
+if [ "${usage_open:-false}" = "true" ]; then
+    open "${SITE_INDEX}"
+elif [ "${usage_serve:-false}" = "true" ]; then
+    echo "Serving docs via jwebserver at http://localhost:8080 (Ctrl+C to stop)..."
+    jwebserver -d build/site -p 8080
+fi

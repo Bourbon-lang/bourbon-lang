@@ -42,7 +42,7 @@ NUMBER $1111_0000_1010_0101   61605.0 @ 29
 ---
 ---
 ERROR  $       @  1
-✗ error[BCE000110]: Failed to parse binary literal value
+error[SYN0003]: Failed to parse binary literal value
   --> 03_numeric_literals.bourbon.txt:5:2
     |
   5 | $ $123 $_01 $10_ $10__01
@@ -53,7 +53,7 @@ ERROR  $       @  1
     |
 
 ERROR  $123    @  3
-✗ error[BCE000110]: Failed to parse binary literal value
+error[SYN0003]: Failed to parse binary literal value
   --> 03_numeric_literals.bourbon.txt:5:5
     |
   5 | $ $123 $_01 $10_ $10__01
@@ -64,7 +64,7 @@ ERROR  $123    @  3
     |
 
 ERROR  $_01    @  8
-✗ error[BCE000110]: Underscore is not allowed at the start of a binary literal
+error[SYN0003]: Underscore is not allowed at the start of a binary literal
   --> 03_numeric_literals.bourbon.txt:5:9
     |
   5 | $ $123 $_01 $10_ $10__01
@@ -75,7 +75,7 @@ ERROR  $_01    @  8
     |
 
 ERROR  $10_    @ 13
-✗ error[BCE000110]: Underscore is not allowed at the end of a binary literal
+error[SYN0003]: Underscore is not allowed at the end of a binary literal
   --> 03_numeric_literals.bourbon.txt:5:16
     |
   5 | $ $123 $_01 $10_ $10__01
@@ -86,7 +86,7 @@ ERROR  $10_    @ 13
     |
 
 ERROR  $10__01 @ 18
-✗ error[BCE000110]: Double underscore is not allowed in a binary literal
+error[SYN0003]: Double underscore is not allowed in a binary literal
   --> 03_numeric_literals.bourbon.txt:5:22
     |
   5 | $ $123 $_01 $10_ $10__01
@@ -110,7 +110,7 @@ NUMBER #1234_5678_9abc_def0    1311768467463790320.0 @ 49
 ---
 ---
 ERROR  #       @  1
-✗ error[BCE000110]: Failed to parse hexadecimal literal value
+error[SYN0003]: Failed to parse hexadecimal literal value
   --> 03_numeric_literals.bourbon.txt:11:2
     |
  11 | # #12g #_ff #ff_ #ff__ff
@@ -121,7 +121,7 @@ ERROR  #       @  1
     |
 
 ERROR  #12g    @  3
-✗ error[BCE000110]: Failed to parse hexadecimal literal value
+error[SYN0003]: Failed to parse hexadecimal literal value
   --> 03_numeric_literals.bourbon.txt:11:6
     |
  11 | # #12g #_ff #ff_ #ff__ff
@@ -132,7 +132,7 @@ ERROR  #12g    @  3
     |
 
 ERROR  #_ff    @  8
-✗ error[BCE000110]: Underscore is not allowed at the start of a hexadecimal literal
+error[SYN0003]: Underscore is not allowed at the start of a hexadecimal literal
   --> 03_numeric_literals.bourbon.txt:11:9
     |
  11 | # #12g #_ff #ff_ #ff__ff
@@ -143,7 +143,7 @@ ERROR  #_ff    @  8
     |
 
 ERROR  #ff_    @ 13
-✗ error[BCE000110]: Underscore is not allowed at the end of a hexadecimal literal
+error[SYN0003]: Underscore is not allowed at the end of a hexadecimal literal
   --> 03_numeric_literals.bourbon.txt:11:16
     |
  11 | # #12g #_ff #ff_ #ff__ff
@@ -154,7 +154,7 @@ ERROR  #ff_    @ 13
     |
 
 ERROR  #ff__ff @ 18
-✗ error[BCE000110]: Double underscore is not allowed in a hexadecimal literal
+error[SYN0003]: Double underscore is not allowed in a hexadecimal literal
   --> 03_numeric_literals.bourbon.txt:11:22
     |
  11 | # #12g #_ff #ff_ #ff__ff
@@ -174,7 +174,7 @@ NUMBER 1_234_567_890 1234567890.0 @ 14
 ---
 ---
 ERROR  123_    @  1
-✗ error[BCE000110]: Underscore is not allowed at the end of a decimal literal
+error[SYN0003]: Underscore is not allowed at the end of a decimal literal
   --> 03_numeric_literals.bourbon.txt:17:4
     |
  17 | 123_ 1__000 1_.2 12a3
@@ -184,7 +184,7 @@ ERROR  123_    @  1
     |    ^ Invalid trailing underscore
     |
 ERROR  1__000  @  6
-✗ error[BCE000110]: Double underscore is not allowed in a decimal literal
+error[SYN0003]: Double underscore is not allowed in a decimal literal
   --> 03_numeric_literals.bourbon.txt:17:8
     |
  17 | 123_ 1__000 1_.2 12a3
@@ -194,7 +194,7 @@ ERROR  1__000  @  6
     |        ^ Invalid double underscore
     |
 ERROR  1_.2    @ 13
-✗ error[BCE000110]: Underscore is not allowed immediately before decimal point '.'
+error[SYN0003]: Underscore is not allowed immediately before decimal point '.'
   --> 03_numeric_literals.bourbon.txt:17:14
     |
  17 | 123_ 1__000 1_.2 12a3
@@ -205,7 +205,7 @@ ERROR  1_.2    @ 13
     |
 
 ERROR  12a3    @ 18
-✗ error[BCE000110]: Failed to parse decimal literal value
+error[SYN0003]: Failed to parse decimal literal value
   --> 03_numeric_literals.bourbon.txt:17:20
     |
  17 | 123_ 1__000 1_.2 12a3
@@ -233,7 +233,7 @@ NUMBER 10.25u                     0.00001025 @ 36
 ---
 ---
 ERROR  1km     @  1
-✗ error[BCE000110]: Failed to parse decimal literal value
+error[SYN0003]: Failed to parse decimal literal value
   --> 03_numeric_literals.bourbon.txt:23:2
     |
  23 | 1km
@@ -257,7 +257,7 @@ NUMBER 123.45e-3           0.12345 @ 48
 ---
 ---
 ERROR  1.2.3   @  1
-✗ error[BCE000110]: Multiple decimal points in numeric literal
+error[SYN0003]: Multiple decimal points in numeric literal
   --> 03_numeric_literals.bourbon.txt:29:4
     |
  29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
@@ -268,7 +268,7 @@ ERROR  1.2.3   @  1
     |
 
 ERROR  1e5     @  7
-✗ error[BCE000110]: Missing sign in decimal exponent
+error[SYN0003]: Missing sign in decimal exponent
   --> 03_numeric_literals.bourbon.txt:29:9
     |
  29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
@@ -282,7 +282,7 @@ ERROR  1e5     @  7
     |
 
 ERROR  1e+     @ 11
-✗ error[BCE000110]: Missing digits in decimal exponent
+error[SYN0003]: Missing digits in decimal exponent
   --> 03_numeric_literals.bourbon.txt:29:14
     |
  29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
@@ -296,7 +296,7 @@ ERROR  1e+     @ 11
     |
 
 ERROR  1e+2e+3 @ 15
-✗ error[BCE000110]: Multiple exponents in decimal literal
+error[SYN0003]: Multiple exponents in decimal literal
   --> 03_numeric_literals.bourbon.txt:29:19
     |
  29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a
@@ -310,7 +310,7 @@ ERROR  1e+2e+3 @ 15
     |
 
 ERROR  1e+a    @ 23
-✗ error[BCE000110]: Invalid exponent digits in decimal exponent
+error[SYN0003]: Invalid exponent digits in decimal exponent
   --> 03_numeric_literals.bourbon.txt:29:26
     |
  29 | 1.2.3 1e5 1e+ 1e+2e+3 1e+a

@@ -5,18 +5,17 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.bourbon.compiler.Diagnostic;
 import org.bourbon.compiler.Label;
 import org.bourbon.compiler.SourceSpan;
+import org.bourbon.compiler.diagnostic.Diagnostic;
+import org.bourbon.compiler.diagnostic.code.DiagnosticCode;
 
 public final class DiagnosticDiffEngine {
 
     private final StructuredDiffEngine<Diagnostic> engine;
     private final StructuredDiffEngine<Label> labelDiffEngine;
-    private final StructuredDiffEngine<String> suggestionDiffEngine;
 
     public DiagnosticDiffEngine() {
         this(0.30);
@@ -26,13 +25,6 @@ public final class DiagnosticDiffEngine {
         this.labelDiffEngine = new StructuredDiffEngine<>(
                 DiagnosticDiffEngine::labelSimilarity,
                 DiagnosticDiffEngine::extractLabelChanges,
-                cutoffThreshold
-        );
-
-        this.suggestionDiffEngine = new StructuredDiffEngine<>(
-                DiagnosticDiffEngine::tokenJaccard,
-                (expectedSuggestion, actualSuggestion) ->
-                        List.of(new FieldChange.ModifiedField("suggestion", expectedSuggestion, actualSuggestion)),
                 cutoffThreshold
         );
 
@@ -67,7 +59,7 @@ public final class DiagnosticDiffEngine {
         score += 0.30 * tokenJaccard(expected.message(), actual.message());
 
         // 3. Diagnostic Code Match (20% Weight)
-        if (expected.code() == actual.code()) {
+        if (DiagnosticCode.equals(expected.code(), actual.code())) {
             score += 0.20;
         }
 
@@ -77,8 +69,8 @@ public final class DiagnosticDiffEngine {
     private List<FieldChange> extractFieldChanges(Diagnostic expected, Diagnostic actual) {
         var changes = new ArrayList<FieldChange>();
 
-        if (expected.code() != actual.code()) {
-            changes.add(new FieldChange.ModifiedField("code", expected.code(), actual.code()));
+        if (!DiagnosticCode.equals(expected.code(), actual.code())) {
+            changes.add(new FieldChange.ModifiedField("code", expected.code().id(), actual.code().id()));
         }
 
         if (expected.severity() != actual.severity()) {
@@ -112,24 +104,6 @@ public final class DiagnosticDiffEngine {
                     }
                 }
                 case DiffEntry.Unchanged<Label> _ -> {}
-                case null -> {}
-            }
-        }
-
-        // Structural Diffing of Suggestions
-        var suggestionDiffEntries = suggestionDiffEngine.diff(expected.suggestions(), actual.suggestions());
-        for (var suggestionDiffEntry : suggestionDiffEntries) {
-            switch (suggestionDiffEntry) {
-                case DiffEntry.Added<String> added ->
-                        changes.add(new FieldChange.AddedField("suggestions[" + added.actualIndex() + "]", added.item()));
-                case DiffEntry.Deleted<String> deleted ->
-                        changes.add(new FieldChange.RemovedField("suggestions[" + deleted.expectedIndex() + "]", deleted.item()));
-                case DiffEntry.Modified<String> modified ->
-                        changes.add(new FieldChange.ModifiedField(
-                                "suggestions[" + modified.expectedIndex() + "]",
-                                modified.expected(),
-                                modified.actual()));
-                case DiffEntry.Unchanged<String> _ -> {}
                 case null -> {}
             }
         }

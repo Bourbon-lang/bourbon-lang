@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Build all targets, including the native compiler"
+#MISE depends=["ide-setup"]
 
 exec bazel build //:build

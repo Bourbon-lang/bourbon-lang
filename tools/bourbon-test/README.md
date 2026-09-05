@@ -15,7 +15,7 @@ IntelliJ IDEA supports native TextMate bundles out-of-the-box.
 1. Open **Settings** (or **Preferences** on macOS) via `Cmd + ,` or `Ctrl + Alt + S`.
 2. Go to **Editor** -> **TextMate Bundles**.
 3. Click the **+** (Add) button at the top right of the bundle list.
-4. Choose the path to this `BourbonTest.tmbundle` directory.
+4. Choose the path to this `bourbon-test` directory.
 5. Click **Apply** and **OK**.
 6. Open any `*.bourbon.txt` scanner test case file to see it in action.
 
@@ -26,7 +26,7 @@ IntelliJ IDEA supports native TextMate bundles out-of-the-box.
 Since this directory contains `package.json`, it is a valid VS Code / Antigravity IDE extension out-of-the-box!
 
 To install it locally:
-1. Copy or symlink this entire `BourbonTest.tmbundle` directory to your editor's extensions folder:
+1. Copy or symlink this entire `bourbon-test` directory to your editor's extensions folder:
    - **VS Code (macOS/Linux)**: `~/.vscode/extensions/BourbonTest.tmbundle`
    - **VS Code (Windows)**: `%USERPROFILE%\.vscode\extensions\BourbonTest.tmbundle`
    - **Antigravity IDE (macOS/Linux)**: `~/.antigravity-ide/extensions/BourbonTest.tmbundle`

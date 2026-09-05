@@ -1,4 +1,5 @@
 #MISE description="Build and run the native compiler binary"
+#MISE depends=["ide-setup"]
 bazel build //compiler:zeylan
 if ($args.Count -eq 0) {
   & bazel-bin/compiler/zeylan.exe repl

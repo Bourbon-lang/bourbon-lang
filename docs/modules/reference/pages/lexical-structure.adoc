@@ -33,7 +33,7 @@ Whitespace characters separate adjacent tokens and are otherwise discarded by th
 Bourbon supports two styles of comments:
 
 * **Line Comments**: Begin with `//` and extend to the end of the current line or input stream.
-* **Block Comments**: Begin with `/*` and terminate with `*/`.
+* **Block Comments**: Begin with `+/*+` and terminate with `+*/+`.
 
 Block comments may be **nested** arbitrarily deep:
 

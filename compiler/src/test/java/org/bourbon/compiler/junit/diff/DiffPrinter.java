@@ -3,8 +3,9 @@ package org.bourbon.compiler.junit.diff;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
-import org.bourbon.compiler.Diagnostic;
+
 import org.bourbon.compiler.Token;
+import org.bourbon.compiler.diagnostic.Diagnostic;
 
 public final class DiffPrinter {
 

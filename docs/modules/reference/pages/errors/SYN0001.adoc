@@ -1,0 +1,74 @@
+= SYN0001: Unexpected Character
+:navtitle: SYN0001
+:description: Diagnostic documentation for SYN0001: Unexpected Character.
+
+An unrecognized character or symbol was encountered during lexical scanning.
+
+`SYN0001` occurs when the Bourbon lexer encounters a byte or character that does not correspond to any valid token, delimiter, operator, or literal syntax in the language grammar.
+
+== Erroneous Code Example
+
+In the following example, the section sign (`§`) is not a recognized operator, punctuation mark, or identifier character in Bourbon:
+
+[source,bourbon]
+----
+fn calculate() {
+    let x = ( § );
+}
+----
+
+Compiling this code triggers `SYN0001`:
+
+[source,text]
+----
+error[SYN0001]: Unexpected character
+  --> src/main.bourbon:2:15
+    |
+  2 |     let x = ( § );
+    |               ^ Unexpected symbol
+----
+
+== Explanation
+
+All Bourbon source files must be encoded in valid UTF-8.
+However, characters outside of string and character literals must strictly belong to Bourbon's defined lexical grammar:
+
+* **Operators & Delimiters**: Characters such as `+`, `-`, `*`, `/`, `|`, `&`, `(`, `{`, `[`, `,`, `.`, `;` are reserved for syntax and operations.
+* **Identifiers**: Variable and function names must begin with an ASCII letter (`a`–`z`, `A`–`Z`) or an underscore (`_`), followed by alphanumeric characters.
+* **Whitespace**: Spaces, tabs, and newlines separate tokens.
+
+Any stray symbol (such as `§`, `@`, `€`, `?`, or non-printable ASCII control characters) appearing outside a comment or string literal cannot be tokenized and will halt compilation.
+
+== How to Fix
+
+=== 1. Remove Stray or Mistyped Characters
+If the character was inserted accidentally, (such as an unintentional keyboard shortcut or copy-paste artifact), remove it:
+
+[source,bourbon]
+----
+fn calculate() {
+    // Valid: Stray character removed
+    let x = ( 42 );
+}
+----
+
+=== 2. Enclose the Character in a String or Character Literal
+If the symbol is intended as textual data, place it inside quotes:
+
+[source,bourbon]
+----
+fn calculate() {
+    // Valid: Symbol is contained inside a string literal
+    let symbol = "§";
+}
+----
+
+=== 3. Replace it with a Valid Operator
+If you intended to perform an operation, verify that you are using a valid Bourbon operator.
+For instance, use `|` for set union or bitwise OR rather than arbitrary mathematical glyphs.
+
+== See Also
+
+* xref:lexical-structure.adoc[Lexical Structure]
+* xref:ebnf-grammar.adoc[EBNF Syntactic Grammar]
+* xref:errors/index.adoc[Error Code Catalog]

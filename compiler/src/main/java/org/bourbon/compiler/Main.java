@@ -1,7 +1,8 @@
 package org.bourbon.compiler;
 
-import org.bourbon.compiler.cli.Sysexits;
 import org.bourbon.compiler.cli.BourbonCommand;
+import org.bourbon.compiler.cli.Sysexits;
+
 import picocli.CommandLine;
 
 public class Main {

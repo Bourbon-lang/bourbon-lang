@@ -1,0 +1,53 @@
+= INT0000: Internal Compiler Bug
+:navtitle: INT0000
+:description: Diagnostic documentation for INT0000: Internal Compiler Bug.
+
+An unexpected internal assertion failure occurred, or an unimplemented compiler feature was reached.
+
+`INT0000` represents an **internal compiler bug**.
+This diagnostic indicates an unexpected failure, broken invariant, or missing implementation within the Bourbon compiler itself, rather than a mistake in your code.
+Even if your program contains invalid syntax or type errors, the compiler is expected to emit proper diagnostics rather than fail internally.
+
+== Common Causes
+
+During current development, `INT0000` typically occurs in two situations:
+
+1. **Unimplemented Language Features**:
+The compiler encountered valid or partially-implemented Bourbon syntax for a pipeline stage that has not yet been built (such as early AST lowering or experimental grammar).
+2. **Internal Invariant Violations**:
+An internal invariant assumed by the compiler (such as an unreachable pattern match branch or an unexpected token sequence) was violated during compilation.
+
+== What You Should Do
+
+If you encounter `INT0000`, please help us improve Bourbon by reporting the bug:
+
+1. **Check Existing Issues**:
+Search the https://github.com/luolong/bourbon-lang/issues[Bourbon Issue Tracker] to see if the issue has already been reported.
+2. **Open a Bug Report**:
+If it is a new issue, https://github.com/luolong/bourbon-lang/issues/new[open a new issue] with the title:
++
+[source,text]
+----
+[Compiler Bug] INT0000: <short description of what you were compiling>
+----
+
+=== Information to Include
+
+To help the maintainers reproduce and resolve the bug quickly, please attach:
+
+* **Compiler Version**: The output of `bourbon --version`.
+* **The Command Executed**: The exact terminal command you ran.
+* **The Full Diagnostic Output**: The complete error message, including any stack trace printed.
+* **A Minimal Reproducing Example**: The smallest `.bourbon` file that triggers the bug.
+
+== Potential Workarounds
+
+While waiting for a bug fix:
+
+* If the error was caused by an experimental or unimplemented feature, check the language documentation to see if an alternative syntax or standard library pattern is recommended.
+* Restructuring the surrounding code (such as breaking a complex expression into intermediate variables) can sometimes bypass the internal invariant failure.
+
+== See Also
+
+* xref:contributing:compiler-pipeline-internals.adoc[Compiler Pipeline Internals]
+* xref:errors/index.adoc[Error Code Catalog]

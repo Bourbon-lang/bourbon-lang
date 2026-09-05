@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Run compiler tests"
+#MISE depends=["ide-setup"]
 
 exec bazel test //:test

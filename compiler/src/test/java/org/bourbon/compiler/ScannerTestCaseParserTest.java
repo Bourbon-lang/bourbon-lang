@@ -13,6 +13,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.Objects;
 
+import org.bourbon.compiler.advisory.Advisory;
+import org.bourbon.compiler.advisory.AdvisoryConsole;
+import org.bourbon.compiler.advisory.AdvisoryLayout;
+import org.bourbon.compiler.advisory.AsciiAdvisoryConsole;
+import org.bourbon.compiler.diagnostic.Consultant;
+import org.bourbon.compiler.diagnostic.Diagnostic;
+import org.bourbon.compiler.diagnostic.DiagnosticLayer;
+import org.bourbon.compiler.diagnostic.DiagnosticPipeline;
+import org.bourbon.compiler.diagnostic.code.Catalog;
+import org.bourbon.compiler.diagnostic.code.DiagnosticCode;
+import org.bourbon.compiler.diagnostic.code.SyntaxErrorCode;
+import org.bourbon.compiler.effects.Effects;
+import org.bourbon.compiler.effects.io.PrintWriter;
 import org.bourbon.compiler.literal.NumberLiteral;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
@@ -40,7 +53,7 @@ public class ScannerTestCaseParserTest {
             STRING '"Hello"' "Hello" @ 5 [36..43]
             ---
             NUMBER 42 42.0 @ 1 [44..46]
-            ✗ error[BCE000100]: Unexpected character
+            error[SYN0001]: Unexpected character
               --> <VALID_TEST_CASE>:3:4
                 |
               3 | 42 @
@@ -106,8 +119,19 @@ public class ScannerTestCaseParserTest {
             assumeStartsWithHeader(VALID_TEST_CASE, HEADER_SEPARATOR_LENGTH);
             assumeSourceBlockBetweenSeparators(VALID_TEST_CASE, HEADER_SEPARATOR_LENGTH, SOURCE_BLOCK_START, SOURCE_BLOCK_END);
 
-            this.parser = new ScannerTestCaseParser(getSource());
-            this.testCase = parser.parseTestCase();
+            var source = getSource();
+            this.parser = new ScannerTestCaseParser(source);
+            this.testCase = Effects.handle(parser::parseTestCase)
+                    .with(Catalog.Handler.class, Catalog.builder()
+                            .add(DiagnosticCode::standardErrorCodes)
+                            .build())
+                    .with(Diagnostic.Handler.class, DiagnosticPipeline.to(new Consultant())
+                            .layer(DiagnosticLayer.validating())
+                            .build())
+                    .with(Advisory.Handler.class, new AdvisoryLayout(name -> source))
+                    .with(AdvisoryConsole.Handler.class, new AsciiAdvisoryConsole())
+                    .with(PrintWriter.Handler.class, PrintWriter.of(System.err))
+                    .get();
         }
 
         @Test
@@ -139,7 +163,7 @@ public class ScannerTestCaseParserTest {
             var diagnostic = parserDiagnostics.getFirst();
             assertAll("Parsed diagnostic",
                     () -> assertEquals(Diagnostic.Severity.ERROR, diagnostic.severity(), "severity"),
-                    () -> assertEquals(Diagnostic.Code.ScannerUnexpectedCharacter, diagnostic.code(), "code"),
+                    () -> assertEquals(SyntaxErrorCode.UnexpectedCharacter, diagnostic.code(), "code"),
                     () -> assertEquals("Unexpected character", diagnostic.message(), "message"),
                     () -> {
                         var labels = diagnostic.labels();

@@ -49,6 +49,28 @@ Each pass must run to completion on a target unit before proceeding to the next.
 Nodes do not store parent pointers, resolved types, or dynamic scopes.
 * *Design*: Nodes reference other nodes using *Node IDs* or index offsets rather than direct memory references.
 * *IDE Support*: Keep whitespace and trivia (comments) preserved as tokens or nodes indexed by position so that we can support refactoring and formatting in the future without re-parsing.
++
+[source,java]
+----
+// Token record representation from org.bourbon.compiler
+public record Token(
+        TokenType type,
+        String lexeme,
+        @Nullable Object literal,
+        int line,
+        int column,
+        int startOffset,
+        int length) {
+
+    public int end() {
+        return startOffset + length;
+    }
+}
+
+// Tokenizing source text via Scanner
+var source = Source.of("value answer = 42;");
+List<Token> tokens = Scanner.scanTokens(source);
+----
 
 === Pass 2: Semantic Analysis & Type Verification
 
@@ -123,14 +145,28 @@ Translates directly to Bourbon:
 // Bourbon representation
 shared interface Expression of Literal | BinaryExpression {}
 ----
-* *Simulate Algebraic Effects via Context Parameters*: In Java, avoid throwing heavy exceptions for parser diagnostics.
-Instead, pass a context reporter (like a `DiagnosticReporter` interface) to your functions:
+* *Simulate Algebraic Effects via Host Emulation*: In Java, avoid throwing heavy exceptions or drilling context parameters (`ParserContext ctx`) down through every helper method.
+Instead, use Bourbon's host effect emulation layer (`org.bourbon.compiler.effects`):
 +
 [source,java]
 ----
-public void parseStatement(ParserContext ctx) {
-    if (isInvalid) {
-        ctx.reportError("Invalid statement");
+// Defining an effect and handler interface in Java
+@Effect
+public record Diagnostic(...) {
+    @Effect.Handler
+    public interface Handler {
+        void report(Diagnostic diagnostic);
+    }
+
+    public static void report(Diagnostic diagnostic) {
+        Effects.get(Diagnostic.Handler.class).report(diagnostic);
+    }
+}
+
+// Emitting diagnostics inside Scanner/Parser without parameter drilling
+public void scanToken() {
+    if (isUnexpected) {
+        ScannerDiagnostic.unexpectedCharacter(source.currentSpan());
     }
 }
 ----
@@ -139,37 +175,98 @@ This matches Bourbon's algebraic effect handler design and maps directly to:
 +
 [source,ceylon]
 ----
-shared void parseStatement() performs DiagnosticReporter {
-    if (isInvalid) {
-        DiagnosticReporter.reportError("Invalid statement");
+// Bourbon native representation
+shared void scanToken() performs Diagnostic.Handler {
+    if (isUnexpected) {
+        ScannerDiagnostic.unexpectedCharacter(source.currentSpan());
     }
 }
 ----
 
 == 6. Grammar Specification & EBNF Extraction
 
-To keep the official language specification and the parser implementation aligned, the compiler architecture employs a **Code-First EBNF Generation** strategy during the bootstrap phase, transitioning to **Spec-First Verification** as the language matures.
+To keep the official language specification, editor tooling, and parser implementation aligned, the compiler architecture employs a **Code-First EBNF Generation** strategy during the bootstrap phase, transitioning to **Spec-First Verification** as the language matures.
+
+=== Dynamic Tracing vs. Static Annotation Processing
+
+When extracting formal grammars from an imperative recursive descent parser, two primary mechanisms exist:
+
+1. **Dynamic Runtime Tracing (Discarded)**:
+* *Mechanism*: Instrumenting parsing methods (`parseStatement()`, `parseExpression()`) to log grammar execution paths as a side-effect of running test inputs.
+* *Why Discarded*: A running parser only witnesses the code paths exercised by specific inputs.
+It cannot discover unreached branches, optional tokens, or alternate syntax branches, making it mathematically impossible to reconstruct a sound and complete language grammar.
+2. **Static Build-Time Annotation Processing (Adopted)**:
+* *Mechanism*: Parsing methods are explicitly decorated with custom `@GrammarRule` annotations containing formal EBNF rules.
+A standard Java Annotation Processor (`javax.annotation.processing.AbstractProcessor`) scans the codebase at compile time and emits a unified grammar document.
+* *Trade-off*: Annotation scanning achieves complete grammar coverage across all code paths.
+However, because Java cannot natively verify that an annotation's EBNF string matches the method's imperative control flow (`if`, `while`, `switch`), structural verification rules are required.
 
 === The Annotation-Driven Strategy
 
-* *Bootstrap Phase (Code-First)*: Every parser rule method is annotated with a `@GrammarRule` containing its formal EBNF representation.
-An annotation tool parses these doc-annotations during compilation, validates structural matching inside the method body, and automatically generates a unified `grammar.ebnf` file in the Antora documentation directory (`docs/`).
-This eliminates double-editing and prevents documentation drift.
-* *Stabilization Phase (Spec-First)*: Once the language syntax stabilizes, the `grammar.ebnf` file is committed as the formal source of truth.
-A Bazel test target matches the compiler annotations against the spec file.
-If a developer edits the parser code and introduces syntax drift or leaves rules unimplemented, the build fails.
+* *Bootstrap Phase (Code-First)*: Every parser rule method is annotated with `@GrammarRule` containing its formal EBNF representation:
++
+[source,java]
+----
+@GrammarRule(
+    name = "Expression",
+    ebnf = "Term { ('+' | '-') Term }",
+    description = "Evaluates addition and subtraction."
+)
+public Expr parseExpression() {
+    Expr left = parseTerm();
+    while (match(TokenType.PLUS, TokenType.MINUS)) {
+        Token op = previous();
+        Expr right = parseTerm();
+        left = new BinaryExpr(left, op, right);
+    }
+    return left;
+}
+----
++
+An annotation processor parses these annotations during `javac` compilation and automatically generates the unified `grammar.ebnf` in the Antora documentation directory (`docs/`).
+This eliminates double-editing and prevents documentation drift during rapid syntax iteration.
+* *Stabilization Phase (Spec-First)*: Once the language syntax stabilizes, `grammar.ebnf` is committed as the formal single source of truth.
+A Bazel test target parses the committed specification and matches it against the compiler annotations.
+If a developer edits the parser code and introduces grammar drift, the build fails.
 
-=== Verification Rules
+=== Structural Verification Rules
 
-1. *Unimplemented Rules*: The verification tool parses the grammar dependencies.
-If an EBNF rule references a non-terminal (e.g., `Statement ::= Assignment | IfStatement`) that does not have a corresponding annotated Java method, it flags a missing implementation error.
-2. *Structural Drift*: The tool verifies that the token and method-call sequence inside the parser method (e.g., calling `match(Token.VAL)` and `parseExpression()`) matches the order specified in the `@GrammarRule` EBNF string.
-3. *Dead Rules*: Any annotated parser method that is unreachable from the grammar's entry point (`CompilationUnit`) is flagged as a dead grammar rule.
+To bridge the gap between declarative EBNF strings and imperative Java parsing logic, the compiler build pipeline enforces three structural rules:
+
+1. *Unimplemented Non-Terminals*: The verification tool parses the EBNF dependency tree.
+If an EBNF rule references a non-terminal (e.g., `Statement ::= Assignment | IfStatement`) that does not map to an annotated Java method, it flags a missing implementation error.
+2. *Structural Sequencing*: The linter verifies that token matching calls (e.g., `match(TokenType.VAL)`) and sub-rule invocations (e.g., `parseExpression()`) inside the method body mirror the sequence declared in the `@GrammarRule` EBNF string.
+3. *Dead Rule Elimination*: Any annotated parser method unreachable from the root grammar entry point (`CompilationUnit`) is flagged as a dead or orphaned grammar rule.
+
+=== Automated Test Generation from Grammar Annotations
+
+The compiler test harness leverages grammar annotations to generate syntax test suites, evaluating two complementary approaches:
+
+* **String-Based EBNF Generation**:
+Parsing the raw EBNF string into an in-memory grammar tree enables random-walk or boundary-coverage token generation for property-based fuzz testing.
+* *Downside*: Requires maintaining an internal EBNF parser within the test processor.
+* *Infinite Recursion Risk*: Recursive grammar rules (e.g., `Expr -> Expr '+' Expr`) can cause test generators to enter unbounded recursion loops unless constrained by a strict recursion depth limit.
+* *Context-Free Limit*: Pure EBNF tests only syntax, not semantics.
+Semantic invariants (such as variable declaration before use, or effect capability checking) cannot be tested via EBNF generation and belong in dedicated typechecker test suites.
+* **Structured Type-Safe Annotations**:
+By enriching `@GrammarRule` with explicit test samples, positive and negative tests are declared directly alongside parsing methods:
++
+[source,java]
+----
+@GrammarRule(
+    name = "Expression",
+    ebnf = "Term { ('+' | '-') Term }",
+    produces = { "1 + 2", "a - b + c" },
+    invalidSamples = { "1 +", "+ 2" }
+)
+public Expr parseExpression() { ... }
+----
++
+The build pipeline extracts these samples to generate automated JUnit fixtures verifying that `produces` inputs parse successfully and `invalidSamples` inputs cleanly emit expected syntax error diagnostics.
 
 === Automating Syntax Highlighting via EBNF
 
-We can reuse the compiler's EBNF annotations to automate the maintenance of syntax highlighting libraries so they never drift from the language parser.
-Below is how our annotations map to various editor ecosystems:
+We can reuse the compiler's EBNF annotations to automate the maintenance of syntax highlighting definitions across multiple editor ecosystems:
 
 [cols="1,2,2", options="header"]
 |===
@@ -179,32 +276,184 @@ Below is how our annotations map to various editor ecosystems:
 (Neovim, Helix, Zed, VS Code)
 | JS-based grammar definition (`grammar.js`) compiled into a fast C parser.
 | EBNF maps structurally to Tree-sitter DSL.
-A transpiler script (`tree-sitter-ebnf-generator`) can convert our extracted EBNF directly into a `grammar.js` boilerplate (sequences `seq()`, alternatives `choice()`, loops `repeat()`).
+A transpiler script (`tree-sitter-ebnf-generator`) converts extracted EBNF directly into a `grammar.js` AST (sequences `seq()`, alternatives `choice()`, repetitions `repeat()`, optionals `optional()`).
 
 | *GitHub & GitLab*
 | GitHub Linguist (originally TextMate regex, migrating to Tree-sitter).
-| When you register Bourbon in GitHub's Linguist, you point to our compiler-generated Tree-sitter or TextMate repository.
-This guarantees syntax highlighting on pull requests and code search works out of the box.
+| When registering Bourbon in GitHub Linguist, we point to the compiler-generated Tree-sitter repository, guaranteeing PR and code-search highlighting works out of the box.
 
 | *TextMate & Sublime* +
 (VS Code, TextMate, Sublime)
 | Oniguruma regex rules in JSON/PLIST (`.tmLanguage`) or YAML (`.sublime-syntax`).
-| While nested regexes cannot be fully generated from EBNF, the keyword, operator, and delimiter token lists can be scraped from the EBNF literals (e.g. `"performs"`, `"=>"`) and injected into a regex template to automatically update keyword lists.
+| While complex nested grammars cannot be fully converted to regex, terminal tokens (keywords, operators, delimiters) annotated with scopes (`scope = "keyword.control"`) are scraped into regex templates to update keyword lists automatically.
 
 | *Vim / Classic Editors*
 | Script-based regex keyword lists (`.vim` syntax files).
-| A script can scrape the EBNF terminals and automatically generate Vim syntax match definitions (e.g., `syntax keyword bourbonKeyword value performs`).
+| A build script scrapes terminal keywords and generates native Vim syntax definitions (e.g., `syntax keyword bourbonKeyword value performs`).
 
 | *CodeMirror (v6)*
 | Lezer parser generator (`.grammar` file compiled to JS).
-| Lezer's notation is a direct derivative of EBNF (choice `\|`, loops `*`/`+`, optional `?`).
-The compiler toolchain can translate Bourbon EBNF rules into Lezer rule blocks (`Rule { expression* }`) to power web-based editors.
+| Lezer's notation is a direct derivative of EBNF.
+The toolchain translates Bourbon EBNF rules into Lezer rule blocks (`Rule { expression* }`) to power web playgrounds and documentation search.
 |===
 
-* *Semantic Highlighting via LSP*: Because the compiler frontend maintains clean side-tables of resolved names and types mapped by `NodeId`, the Language Server (LSP) can query these tables to emit precise Semantic Tokens to the editor (e.g., distinguishing custom Type names from variables).
+* *Caveats on Highlighting*:
+  * *Lexical vs. Syntactic Boundaries*: TextMate highlighters only match flat lexical tokens (keywords, literals, comments).
+  Annotations must distinguish lexical terminal rules from structural non-terminals.
+  * *Statefulness*: Multi-line constructs (such as nested block comments or string interpolation) require stateful tracking beyond pure context-free EBNF.
+  Such rules require explicit metadata flags (e.g., `isMultiline = true`).
+* *Semantic Highlighting via LSP*: Because the compiler frontend maintains clean side-tables of resolved names and types mapped by `NodeId`, the Language Server (LSP) queries these tables to emit precise Semantic Tokens to editors (e.g., distinguishing custom Type names from variables).
+See xref:compiler-as-lsp.adoc[Compiler as Language Server (LSP)].
+
+=== IDE Integration Trade-offs: IntelliJ Grammar-Kit & Eclipse Xtext
+
+When evaluating whether to generate proprietary IDE grammar formats from our annotations, we establish clear architectural boundaries:
+
+==== 1. IntelliJ IDEA & Grammar-Kit (`.bnf`)
+The IntelliJ Platform does not construct its Program Structure Interface (PSI) directly from raw EBNF; it requires JetBrains **Grammar-Kit** (`.bnf` files).
+* *Recommendation*: Never hand-roll Java classes directly implementing IntelliJ's heavy internal interfaces (`PsiElement`, `ASTNode`, `IElementType`).
+* *Bridging Strategy*: If native IntelliJ PSI generation is required, an annotation processor should emit Grammar-Kit `.bnf` definitions, augmented with IntelliJ-specific attributes:
+  * `pin`: Error recovery pinning so syntax completion continues working while the developer is typing incomplete syntax.
+  * `recoverWhile`: Recovery rules to prevent cascading syntax errors across subsequent declarations.
+  * `extendsRule`: Mapping inheritance hierarchies into generated PSI interfaces.
+  * `implementsInterface`: Binding rules to platform marker interfaces (e.g., `com.intellij.psi.PsiNamedElement` for "Go to Definition" and rename refactorings).
+  * `private`: Node folding to prevent AST wrapper bloat.
+
+==== 2. Eclipse Xtext (`.xtext`) Rejection
+While Eclipse Xtext supports generating Language Server Protocol (LSP) backends and Eclipse plugins from `.xtext` grammar files, adopting Xtext introduces severe architectural liabilities:
+* *Inverted Source of Truth*: Xtext expects the `.xtext` grammar to be the primary root definition from which it generates EMF (Eclipse Modeling Framework) Ecore AST classes, an LL(*) ANTLR parser, and editor integration.
+* *The Double-Parser Problem*: Generating `.xtext` from Java annotations forces the project to maintain two independent parsers: Bourbon's native recursive descent parser and Xtext's generated ANTLR parser.
+Any subtle divergence in operator precedence, error recovery, or lookahead causes conflicting behavior between batch builds and IDE diagnostics.
+* *Heavy EMF Coupling*: Xtext requires explicit AST-binding metadata in rules (`feature+=...`, `{TypeName}`) tightly bound to Eclipse EMF models, violating Bourbon's lightweight, data-oriented frontend design.
+* *Architectural Decision*: **Bourbon rejects Xtext**.
+In alignment with our xref:compiler-as-lsp.adoc[Compiler as Language Server] architecture, Bourbon maintains a single hand-written parser in `compiler-core` serving both the CLI compiler and the native LSP daemon, completely eliminating dual-parser drift.
 
 
-== 7. Summary Checklist for Developers
+== 7. Diagnostic & Advisory Pipeline Architecture
+
+The compiler decouples diagnostic emission, presentation layout, styling, and I/O through a multi-stage algebraic effect pipeline.
+Diagnostics are treated as factual compiler events, enriched into user-facing advisories, laid out into 2D character-grid geometry, and styled by target-specific console handlers.
+
+[mermaid]
+----
+flowchart TD
+    subgraph Phases ["1. Compiler Phases"]
+        Scanner["Scanner / Lexer"]
+        Parser["Parser"]
+        Checker["Type & Semantic Checker"]
+    end
+
+    Phases -->|"@Effect Diagnostic.Handler<br/>Diagnostic.report(diagnostic)"| DiagPipe
+
+    subgraph DiagSystem ["2. Diagnostic Pipeline & Onion Layers"]
+        DiagPipe["DiagnosticPipeline"] -->|"Validates"| ValidatingLayer["DiagnosticLayer.validating()<br/>Catalog check"]
+    end
+
+    ValidatingLayer -->|"Reports validated fact"| Consultant
+
+    subgraph Bridge ["3. Consultant Bridge"]
+        Consultant["Consultant (Diagnostic.Handler)<br/>Transforms Diagnostic to Advisory"]
+    end
+
+    Consultant -->|"@Effect Advisory.Handler<br/>Advisory.submit(advisory)"| AdvisoryLayout
+
+    subgraph LayoutEngine ["4. AdvisoryLayout (Geometry & 2D Grid Engine)"]
+        AdvisoryLayout["AdvisoryLayout<br/>Resolves sources, computes gutters,<br/>enforces 1:1 line/annotation pairing"]
+    end
+
+    AdvisoryLayout -->|"@Effect AdvisoryConsole.Handler<br/>AdvisoryConsole.println(Part... parts)"| Consoles
+
+    subgraph Consoles ["5. Advisory Consoles (Styling & Media Adapters)"]
+        AsciiConsole["AsciiAdvisoryConsole<br/>(Headless, CI, Snapshot Testing)"]
+        AnsiConsole["AnsiAdvisoryConsole<br/>(Interactive CLI / REPL, ANSI Styles, Glyphs)"]
+    end
+
+    Consoles -->|"@Effect PrintWriter.Handler<br/>PrintWriter.print(...) / println(...)"| Sinks
+
+    subgraph Sinks ["6. Output Sinks (Character I/O)"]
+        TerminalSink["System.err / TTY"]
+        BufferSink["StringWriter / StringBuilder (Test Buffers)"]
+    end
+----
+
+=== Pipeline Responsibilities
+
+1. *Compiler Phases (`Diagnostic`)*: Emits raw compiler facts (syntax violations, broken invariants) via the ambient `@Effect Diagnostic.Handler`. Diagnostics carry unformatted spans, severity, codes, and messages.
+2. *Onion Layers (`DiagnosticPipeline`, `DiagnosticLayer`)*: Composable middleware (e.g. `DiagnosticLayer.validating()`) that checks codes against the `Catalog`, transforming unregistered codes into `CompilerBug` errors.
+3. *Consultant Bridge (`Consultant`)*: A `Diagnostic.Handler` sink that adapts factual `Diagnostic`s into structured `Advisory` presentation models and submits them via `@Effect Advisory.Handler`.
+4. *Geometry & Layout (`AdvisoryLayout`)*: Resolves source files by name, calculates gutter widths and line number padding, aligns underlines with source columns, and decomposes lines into semantic `Part` tokens passed to `AdvisoryConsole.println(Part... parts)`.
+5. *Console Presentation (`AdvisoryConsole`)*: Consumes `Part` tokens and renders them according to the output media:
+   * `AsciiAdvisoryConsole`: Emits clean, deterministic, unstyled ASCII text for headless test assertions and snapshot tests.
+   * `AnsiAdvisoryConsole`: Applies ANSI colors, bold weights, and Unicode/NerdFont glyphs for interactive terminal and REPL use.
+6. *Character I/O Sink (`PrintWriter`)*: Foundational algebraic effect capability delegating raw character streaming to physical streams, in-memory buffers, or sockets without coupling formatters to mutable state.
+
+=== Emitting Diagnostic Facts
+
+Compiler phases emit raw, factual events without layout or styling assumptions:
+
+[source,java]
+----
+// Emitting a syntax diagnostic from Scanner (org.bourbon.compiler.Scanner)
+Diagnostic.error(
+    SyntaxErrorCode.UnexpectedCharacter,
+    List.of(Label.primaryOf(source.currentSpan(), "Unexpected symbol"))
+);
+----
+
+=== Pipeline Composition & Effect Mounting
+
+The diagnostic pipeline is mounted and composed dynamically using `Effects.handle(...).with(...)`.
+
+==== Interactive CLI & REPL Environment (`ReplCommand.java`)
+In the CLI and REPL, factual diagnostics pass through `DiagnosticPipeline`, are enriched by `Consultant` into `Advisory` structures, laid out into 2D character grids by `AdvisoryLayout`, and rendered with ANSI styles and NerdFont glyphs via `AnsiAdvisoryConsole`:
+
+[source,java]
+----
+var tokens = Effects.handle(() -> Scanner.scanTokens(source))
+        .with(Catalog.Handler.class, Catalog.builder()
+                .add(DiagnosticCode::standardErrorCodes)
+                .build())
+        .with(Diagnostic.Handler.class, DiagnosticPipeline.to(new Consultant())
+                .layer(DiagnosticLayer.validating())
+                .build())
+        .with(Advisory.Handler.class, new AdvisoryLayout(name ->
+                Source.named(name).of(source.content())))
+        .with(AdvisoryConsole.Handler.class, new AnsiAdvisoryConsole(NerdFont))
+        .with(Terminal.Handler.class, Terminal.of(terminal))
+        .with(PrintWriter.Handler.class, PrintWriter.of(terminal.writer()))
+        .get();
+----
+
+==== Headless Snapshot Testing Harness (`ScannerTest.java`)
+In headless test suites and CI runs, the pipeline mounts a custom `Diagnostic.Handler` collector alongside `AsciiAdvisoryConsole` for deterministic, unstyled diffing without terminal control characters:
+
+[source,java]
+----
+var actualDiagnostics = new ArrayList<Diagnostic>();
+var reporter = new Diagnostic.Handler() {
+    @Override
+    public void report(Diagnostic diagnostic) {
+        actualDiagnostics.add(diagnostic);
+        DiagnosticFormatter.format(testCase.input(), diagnostic, System.err::print);
+    }
+};
+
+var actualTokens = Effects.handle(() -> Scanner.scanTokens(source))
+        .with(Catalog.Handler.class, Catalog.builder()
+                .add(DiagnosticCode::standardErrorCodes)
+                .build())
+        .with(Diagnostic.Handler.class, DiagnosticPipeline.to(reporter)
+                .layer(DiagnosticLayer.validating())
+                .build())
+        .get();
+
+new DiffPrinter(testInfo.getDisplayName()).verbose()
+        .withTokenDiff(expectedTokens, actualTokens)
+        .withDiagnosticDiff(expectedDiagnostics, actualDiagnostics)
+        .printDiff();
+----
+
+== 8. Summary Checklist for Developers
 
 When writing compiler code during the bootstrap phase, always ask:
 

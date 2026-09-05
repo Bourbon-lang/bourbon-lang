@@ -3,7 +3,17 @@ package org.bourbon.compiler;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.bourbon.compiler.advisory.Advisory;
+import org.bourbon.compiler.advisory.AdvisoryConsole;
+import org.bourbon.compiler.advisory.AdvisoryLayout;
+import org.bourbon.compiler.advisory.AsciiAdvisoryConsole;
+import org.bourbon.compiler.diagnostic.Diagnostic;
+import org.bourbon.compiler.diagnostic.DiagnosticLayer;
+import org.bourbon.compiler.diagnostic.DiagnosticPipeline;
+import org.bourbon.compiler.diagnostic.code.Catalog;
+import org.bourbon.compiler.diagnostic.code.DiagnosticCode;
 import org.bourbon.compiler.effects.Effects;
+import org.bourbon.compiler.effects.io.PrintWriter;
 import org.bourbon.compiler.junit.CompilerAssertions;
 import org.bourbon.compiler.junit.diff.DiffPrinter;
 import org.jspecify.annotations.NullMarked;
@@ -27,16 +37,19 @@ class ScannerTest {
         //noinspection ConstantValue
         if (testCase instanceof ScannerTestCase(Source source, List<Token> expectedTokens, List<Diagnostic> expectedDiagnostics)) {
             var actualDiagnostics = new ArrayList<Diagnostic>();
-            var reporter = new DiagnosticReporter.Handler() {
-                @Override
-                public void report(Diagnostic diagnostic) {
-                    actualDiagnostics.add(diagnostic);
-                    DiagnosticFormatter.format(testCase.input(), diagnostic, System.err::print);
-                }
-            };
 
             var actualTokens = Effects.handle(() -> Scanner.scanTokens(source))
-                    .with(DiagnosticReporter.Handler.class, reporter)
+                    .with(Catalog.Handler.class, Catalog.builder()
+                            .add(DiagnosticCode::standardErrorCodes)
+                            .build())
+                    .with(Diagnostic.Handler.class, DiagnosticPipeline.to(actualDiagnostics::add)
+                            .layer(DiagnosticLayer.validating())
+                            .build())
+                    .with(Advisory.Handler.class, new AdvisoryLayout(name ->
+                            // FIXME: Make source content dependent on source name
+                            Source.named(name).of(source.content())))
+                    .with(AdvisoryConsole.Handler.class, new AsciiAdvisoryConsole())
+                    .with(PrintWriter.Handler.class, PrintWriter.of(System.err))
                     .get();
 
             new DiffPrinter(testInfo.getDisplayName()).verbose()

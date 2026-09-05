@@ -1,0 +1,92 @@
+= Error Code Catalog
+:navtitle: Error Catalog
+:description: Reference index of all Bourbon compiler diagnostic and error codes.
+
+This catalog provides a comprehensive reference of all diagnostic and error codes emitted by the Bourbon compiler pipeline.
+
+All compiler errors are classified into distinct domains, each identified by a three-letter prefix.
+You can inspect detailed explanations and remediation steps for any code using the compiler CLI:
+
+[source,bash]
+----
+bourbon explain <CODE>
+----
+
+== Code Structure and Domains
+
+Bourbon diagnostic codes follow the format `<PREFIX><0000>`, where the prefix identifies the language domain:
+
+* `INT` — Internal compiler pipeline and system errors
+* `SYN` — Lexical scanning, tokenization, and grammar syntax
+* `TYP` — Set-theoretic type system and inference
+* `EFF` — Algebraic effects, handlers, and capability scopes
+* `MOD` — Module boundaries, imports, and symbol resolution
+
+'''
+
+== Internal Compiler Errors (INT)
+
+Internal compiler errors represent unexpected conditions, failed pipeline assertions, or environment failures.
+These errors indicate compiler bugs or host I/O issues rather than errors in user code.
+
+* Compiler assertion failures and unhandled internal bugs (`INT0000`).
+* File system and I/O failures when accessing source files.
+* Host toolchain and environment initialization failures.
+
+
+*Codes:*
+xref:errors/INT0000.adoc[`INT0000`] ·
+xref:errors/INT0001.adoc[`INT0001`] ·
+xref:errors/INT0002.adoc[`INT0002`]
+
+'''
+
+== Syntax and Lexical Errors (SYN)
+
+Syntax and lexical errors describe malformed source code structure detected during token scanning and grammatical parsing.
+These errors occur before semantic or type analysis can proceed.
+
+* Unrecognized characters, illegal symbols, or invalid encoding.
+* Malformed numeric, string, or character literal values.
+* Unbalanced delimiters such as unclosed multiline comments, brackets, or parentheses.
+* Incomplete statements, missing punctuation, or malformed declarations.
+
+*Codes:*
+xref:errors/SYN0001.adoc[`SYN0001`] ·
+xref:errors/SYN0002.adoc[`SYN0002`] ·
+xref:errors/SYN0003.adoc[`SYN0003`]
+
+'''
+
+== Type System Errors (TYP)
+
+Type system errors describe violations of Bourbon's set-theoretic type algebra, inference constraints, and validity rules.
+These errors occur when expressions evaluate to values incompatible with declared or inferred types.
+
+* Incompatible type assignments and function call argument mismatches.
+* Invalid union, intersection, or complement type operations.
+* Unresolved type variables and unsatisfiable subtyping bounds.
+* Invalid member access, missing fields, or conflicting method dispatches.
+
+'''
+
+== Algebraic Effects and Handlers (EFF)
+
+Algebraic effect errors represent violations of Bourbon's capability and effect handling model.
+These errors occur when functions perform ambient effects without valid declarations or appropriate enclosing handlers.
+
+* Performing an effect has not been declared in the enclosing function signature.
+* Missing or unhandled effect scopes in an execution path.
+* Type or protocol mismatches in effect handler operations.
+* Unsafe capability leaks across sandboxed module boundaries.
+
+'''
+
+== Module and Namespace Errors (MOD)
+
+Module errors describe issues encountered when locating, importing, and resolving symbols across module boundaries.
+
+* Unresolved module imports or missing dependency manifests.
+* Duplicate symbol declarations within the same scope.
+* Visibility violations, such as accessing private package definitions.
+* Circular module dependencies.
